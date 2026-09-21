@@ -11,6 +11,8 @@ Para cada commit incluído no evento `push`, ele:
 5. registra as métricas e a diferença para o commit anterior;
 6. publica `impacto-commits.md` no resumo da execução e arquiva `sonar/reports/`.
 
+O build executa os testes com `mvn verify`. O JaCoCo é executado pelo Maven e gera `target/site/jacoco/jacoco.xml`; esse arquivo é enviado ao SonarQube por meio de `sonar.coverage.jacoco.xmlReportPaths`.
+
 Quando o push contém mais de um commit, todos são analisados em ordem. Quando existe um commit anterior com `pom.xml`, ele é analisado como baseline técnico para que o primeiro commit do push também tenha comparação.
 
 ## Configuração no GitHub
@@ -26,6 +28,8 @@ O workflow está configurado diretamente para o SonarQube Cloud:
 - `SONAR_ORGANIZATION`: `devheloisacabral`.
 
 O token não deve ser colocado no repositório, no workflow, na URL ou nos relatórios.
+
+Os testes também precisam estar commitados e enviados ao GitHub. Um arquivo de teste apenas no computador local não participa da análise do Action.
 
 ## Execução manual
 

@@ -74,12 +74,13 @@ run_analysis() {
     "-Dsonar.projectVersion=$version"
     "-Dsonar.scm.revision=$commit"
     "-Dsonar.host.url=$SONAR_HOST_URL"
+    "-Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml"
   )
   if [[ -n "${SONAR_ORGANIZATION:-}" ]]; then
     sonar_arguments+=("-Dsonar.organization=$SONAR_ORGANIZATION")
   fi
 
-  "${mvn_command[@]}" -B -DskipTests verify \
+  "${mvn_command[@]}" -B verify \
     org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar \
     "${sonar_arguments[@]}"
 
