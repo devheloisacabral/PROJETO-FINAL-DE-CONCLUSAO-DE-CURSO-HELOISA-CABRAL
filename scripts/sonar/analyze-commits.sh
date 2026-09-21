@@ -6,20 +6,12 @@ set -Eeuo pipefail
 
 project_key="${SONAR_PROJECT_KEY:-${GITHUB_REPOSITORY//\//_}}"
 after_commit="${PUSH_AFTER:-${GITHUB_SHA:?GITHUB_SHA não está disponível}}"
-before_commit="${PUSH_BEFORE:-}"
-event_name="${PUSH_EVENT:-push}"
 reports_dir="${GITHUB_WORKSPACE:-.}/sonar/reports"
 metrics="bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,complexity,ncloc"
 mkdir -p "$reports_dir"
 rm -f "$reports_dir/impacto-commits.md" "$reports_dir/commits.csv"
 
-if [[ "$event_name" == "workflow_dispatch" ]]; then
-  commits=("$after_commit")
-elif [[ -z "$before_commit" || "$before_commit" =~ ^0+$ ]]; then
-  mapfile -t commits < <(git rev-list --reverse "$after_commit")
-else
-  mapfile -t commits < <(git rev-list --reverse "$before_commit..$after_commit")
-fi
+mapfile -t commits < <(git rev-list --reverse "$after_commit")
 
 if [[ ${#commits[@]} -eq 0 ]]; then
   commits=("$after_commit")

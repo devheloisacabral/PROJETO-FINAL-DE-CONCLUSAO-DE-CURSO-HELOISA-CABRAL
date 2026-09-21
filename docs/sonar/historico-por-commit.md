@@ -13,7 +13,7 @@ Para cada commit incluído no evento `push`, ele:
 
 O build executa os testes com `mvn verify`. O JaCoCo é executado pelo Maven e gera `target/site/jacoco/jacoco.xml`; esse arquivo é enviado ao SonarQube por meio de `sonar.coverage.jacoco.xmlReportPaths`.
 
-Quando o push contém mais de um commit, todos são analisados em ordem. Quando existe um commit anterior com `pom.xml`, ele é analisado como baseline técnico para que o primeiro commit do push também tenha comparação.
+Cada execução reconstrói o histórico desde o primeiro commit até o commit analisado. Assim, o relatório possui uma linha para cada commit que contém `pom.xml`, mesmo quando o último push contém apenas um commit. Commits sem `pom.xml` são registrados como ignorados porque não representam uma versão Maven analisável.
 
 ## Configuração no GitHub
 

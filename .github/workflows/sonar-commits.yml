@@ -18,9 +18,7 @@ jobs:
       SONAR_PROJECT_KEY: devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS
       SONAR_ORGANIZATION: devheloisacabral
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      PUSH_BEFORE: ${{ github.event.before }}
       PUSH_AFTER: ${{ github.sha }}
-      PUSH_EVENT: ${{ github.event_name }}
     steps:
       - name: Checkout completo
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
