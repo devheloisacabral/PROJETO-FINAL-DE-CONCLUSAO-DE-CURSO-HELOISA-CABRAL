@@ -113,6 +113,7 @@ run_analysis() {
 
 previous_commit=""
 previous_metrics='{}'
+skipped_commits=()
 if [[ ${#commits[@]} -gt 0 ]]; then
   first_commit="${commits[0]}"
   if parent_commit="$(git rev-parse "${first_commit}^" 2>/dev/null)" && git cat-file -e "$parent_commit^{commit}" 2>/dev/null; then
@@ -139,7 +140,7 @@ fi
 
 for commit in "${commits[@]}"; do
   if ! git cat-file -e "$commit:pom.xml" 2>/dev/null; then
-    echo "- \`$commit\`: ignorado porque não contém pom.xml." >> "$reports_dir/impacto-commits.md"
+    skipped_commits+=("$commit")
     continue
   fi
   run_analysis "$commit" "$commit"
@@ -167,12 +168,27 @@ for commit in "${commits[@]}"; do
   printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
     "$commit" "${previous_commit:--}" "$date" "$bugs" "$vulnerabilities" "$hotspots" "$smells" "$coverage" "$duplication" "$complexity" "$ncloc" \
     >> "$reports_dir/commits.csv"
+  previous_ref="${previous_commit:0:12}"
+  if [[ -z "$previous_ref" ]]; then
+    previous_ref="-"
+  fi
   printf '| `%s` | `%s` | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) |\n' \
-    "${commit:0:12}" "${previous_commit:0:12}" "$bugs" "$(delta "$bugs" "$previous_bugs")" "$vulnerabilities" "$(delta "$vulnerabilities" "$previous_vulnerabilities")" "$hotspots" "$(delta "$hotspots" "$previous_hotspots")" "$smells" "$(delta "$smells" "$previous_smells")" "$coverage" "$(delta "$coverage" "$previous_coverage")" "$duplication" "$(delta "$duplication" "$previous_duplication")" "$complexity" "$(delta "$complexity" "$previous_complexity")" "$ncloc" "$(delta "$ncloc" "$previous_ncloc")" \
+    "${commit:0:12}" "$previous_ref" "$bugs" "$(delta "$bugs" "$previous_bugs")" "$vulnerabilities" "$(delta "$vulnerabilities" "$previous_vulnerabilities")" "$hotspots" "$(delta "$hotspots" "$previous_hotspots")" "$smells" "$(delta "$smells" "$previous_smells")" "$coverage" "$(delta "$coverage" "$previous_coverage")" "$duplication" "$(delta "$duplication" "$previous_duplication")" "$complexity" "$(delta "$complexity" "$previous_complexity")" "$ncloc" "$(delta "$ncloc" "$previous_ncloc")" \
     >> "$reports_dir/impacto-commits.md"
 
   previous_commit="$commit"
   previous_metrics="$analysis_metrics"
 done
+
+if [[ ${#skipped_commits[@]} -gt 0 ]]; then
+  {
+    echo
+    echo '## Commits ignorados'
+    echo
+    for skipped_commit in "${skipped_commits[@]}"; do
+      echo "- \`$skipped_commit\`: não contém pom.xml e não pode ser analisado pelo Maven."
+    done
+  } >> "$reports_dir/impacto-commits.md"
+fi
 
 git checkout --detach --force "$after_commit" >/dev/null
