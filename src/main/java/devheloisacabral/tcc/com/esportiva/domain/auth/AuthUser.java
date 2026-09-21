@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "users")
@@ -28,6 +29,15 @@ public class AuthUser {
     @Column(nullable = false, length = 20)
     private UserRole role;
 
+    @Column(length = 120)
+    private String name;
+    @Column(length = 30)
+    private String phone;
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+    @Column(length = 20)
+    private String status;
+
     protected AuthUser() {
     }
 
@@ -35,6 +45,16 @@ public class AuthUser {
         this.email = email;
         this.passwordHash = passwordHash;
         this.role = role;
+    }
+
+    public AuthUser(String name, String email, String phone, LocalDate birthDate, String passwordHash) {
+        this.name = name;
+        this.email = email;
+        this.phone = phone;
+        this.birthDate = birthDate;
+        this.passwordHash = passwordHash;
+        this.role = UserRole.ALUNO;
+        this.status = "inativo";
     }
 
     public Long getId() {
@@ -52,4 +72,9 @@ public class AuthUser {
     public UserRole getRole() {
         return role;
     }
+
+    public String getName() { return name; }
+    public String getPhone() { return phone; }
+    public LocalDate getBirthDate() { return birthDate; }
+    public String getStatus() { return status; }
 }

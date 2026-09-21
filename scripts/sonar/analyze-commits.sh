@@ -5,16 +5,52 @@ set -Eeuo pipefail
 : "${SONAR_TOKEN:?Configure o secret SONAR_TOKEN no repositório}"
 
 project_key="${SONAR_PROJECT_KEY:-${GITHUB_REPOSITORY//\//_}}"
-after_commit="${PUSH_AFTER:-${GITHUB_SHA:?GITHUB_SHA não está disponível}}"
+head_commit="${PUSH_AFTER:-${GITHUB_SHA:?GITHUB_SHA não está disponível}}"
+current_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+base_branch="${SONAR_BASE_BRANCH:-${GITHUB_BASE_REF:-}}"
 reports_dir="${GITHUB_WORKSPACE:-.}/sonar/reports"
 metrics="bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,complexity,ncloc"
+
 mkdir -p "$reports_dir"
-rm -f "$reports_dir/impacto-commits.md" "$reports_dir/commits.csv"
+rm -f "$reports_dir/impacto-branches.md" "$reports_dir/branches.csv"
 
-mapfile -t commits < <(git rev-list --reverse "$after_commit")
+if [[ -z "$current_branch" ]]; then
+  current_branch="$(git branch --show-current)"
+fi
 
-if [[ ${#commits[@]} -eq 0 ]]; then
-  commits=("$after_commit")
+if [[ -z "$base_branch" && "$current_branch" =~ ^prompt-([0-9]{2})-(.+)$ ]]; then
+  prompt_number="${BASH_REMATCH[1]}"
+  previous_number=$((10#$prompt_number - 1))
+  if (( previous_number > 0 )); then
+    previous_prefix="$(printf 'prompt-%02d-' "$previous_number")"
+    mapfile -t candidate_branches < <(git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin | grep "^${previous_prefix}" | sort)
+    if [[ ${#candidate_branches[@]} -eq 1 ]]; then
+      base_branch="${candidate_branches[0]}"
+    fi
+  fi
+fi
+
+if [[ -z "$base_branch" ]]; then
+  echo "Não foi possível identificar a branch base. Configure SONAR_BASE_BRANCH." >&2
+  exit 1
+fi
+
+git fetch --no-tags origin "+refs/heads/$base_branch:refs/remotes/origin/$base_branch" >/dev/null 2>&1 || true
+base_ref="origin/$base_branch"
+git rev-parse --verify "$base_ref^{commit}" >/dev/null 2>&1 || {
+  echo "A branch base '$base_branch' não existe no origin." >&2
+  exit 1
+}
+git rev-parse --verify "$head_commit^{commit}" >/dev/null 2>&1 || {
+  echo "O commit atual '$head_commit' não existe no checkout." >&2
+  exit 1
+}
+
+base_commit="$(git rev-parse "$base_ref^{commit}")"
+head_commit="$(git rev-parse "$head_commit^{commit}")"
+if [[ "$base_commit" == "$head_commit" ]]; then
+  echo "A branch atual e a branch base apontam para o mesmo commit; não há impacto para analisar." >&2
+  exit 0
 fi
 
 json_value() {
@@ -47,13 +83,12 @@ run_analysis() {
   local version="$2"
   local report_task
   local task_id
-  local analysis_id
+  local analysis_id=""
   local task_status
   local measures
 
   git checkout --detach --force "$commit" >/dev/null
   rm -rf target
-  mkdir -p "$reports_dir"
 
   if [[ -f ./mvnw ]]; then
     mvn_command=(bash ./mvnw)
@@ -98,97 +133,81 @@ run_analysis() {
     sleep 5
   done
 
-  [[ -n "${analysis_id:-}" && "$analysis_id" != "null" ]] || {
+  [[ -n "$analysis_id" && "$analysis_id" != "null" ]] || {
     echo "A análise SonarQube não terminou para $commit" >&2
     return 1
   }
 
-  measures="$(curl --fail --silent --show-error \
+  analysis_metrics="$(curl --fail --silent --show-error \
     --header "Authorization: Bearer $SONAR_TOKEN" \
     --get "$SONAR_HOST_URL/api/measures/component" \
     --data-urlencode "component=$project_key" \
     --data-urlencode "metricKeys=$metrics")"
-  analysis_metrics="$measures"
 }
 
-previous_commit=""
-previous_metrics='{}'
-skipped_commits=()
-if [[ ${#commits[@]} -gt 0 ]]; then
-  first_commit="${commits[0]}"
-  if parent_commit="$(git rev-parse "${first_commit}^" 2>/dev/null)" && git cat-file -e "$parent_commit^{commit}" 2>/dev/null; then
-    git show "$parent_commit:pom.xml" >/dev/null 2>&1 && run_analysis "$parent_commit" "baseline-$parent_commit"
-    if [[ -n "${analysis_metrics:-}" && "$analysis_metrics" != '{}' ]]; then
-      previous_commit="$parent_commit"
-      previous_metrics="$analysis_metrics"
-    fi
-  fi
-fi
+git cat-file -e "$base_commit:pom.xml" || { echo "A branch base não contém pom.xml." >&2; exit 1; }
+git cat-file -e "$head_commit:pom.xml" || { echo "A branch atual não contém pom.xml." >&2; exit 1; }
+
+run_analysis "$base_commit" "base-${base_commit:0:12}"
+base_metrics="$analysis_metrics"
+run_analysis "$head_commit" "head-${head_commit:0:12}"
+head_metrics="$analysis_metrics"
+
+metric_value() {
+  number_or_na "$(json_value "$1" "$2")"
+}
+
+base_bugs="$(metric_value "$base_metrics" bugs)"
+head_bugs="$(metric_value "$head_metrics" bugs)"
+base_vulnerabilities="$(metric_value "$base_metrics" vulnerabilities)"
+head_vulnerabilities="$(metric_value "$head_metrics" vulnerabilities)"
+base_hotspots="$(metric_value "$base_metrics" security_hotspots)"
+head_hotspots="$(metric_value "$head_metrics" security_hotspots)"
+base_smells="$(metric_value "$base_metrics" code_smells)"
+head_smells="$(metric_value "$head_metrics" code_smells)"
+base_coverage="$(metric_value "$base_metrics" coverage)"
+head_coverage="$(metric_value "$head_metrics" coverage)"
+base_duplication="$(metric_value "$base_metrics" duplicated_lines_density)"
+head_duplication="$(metric_value "$head_metrics" duplicated_lines_density)"
+base_complexity="$(metric_value "$base_metrics" complexity)"
+head_complexity="$(metric_value "$head_metrics" complexity)"
+base_ncloc="$(metric_value "$base_metrics" ncloc)"
+head_ncloc="$(metric_value "$head_metrics" ncloc)"
+
+base_date="$(git show -s --format=%cI "$base_commit")"
+head_date="$(git show -s --format=%cI "$head_commit")"
 
 {
-  echo 'commit,previous_commit,date,bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,complexity,ncloc'
-} > "$reports_dir/commits.csv"
+  echo 'branch,role,commit,date,bugs,vulnerabilities,security_hotspots,code_smells,coverage,duplicated_lines_density,complexity,ncloc'
+  printf '%s,base,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$base_branch" "$base_commit" "$base_date" "$base_bugs" "$base_vulnerabilities" "$base_hotspots" "$base_smells" "$base_coverage" "$base_duplication" "$base_complexity" "$base_ncloc"
+  printf '%s,head,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$current_branch" "$head_commit" "$head_date" "$head_bugs" "$head_vulnerabilities" "$head_hotspots" "$head_smells" "$head_coverage" "$head_duplication" "$head_complexity" "$head_ncloc"
+} > "$reports_dir/branches.csv"
 
 {
-  echo '# Histórico de qualidade por commit'
+  echo '# Impacto de qualidade entre branches'
   echo
   echo "Projeto SonarQube: \`$project_key\`"
   echo
-  echo '| Commit | Commit anterior | Bugs | Vulnerabilidades | Hotspots | Code smells | Cobertura | Duplicação | Complexidade | Linhas |'
-  echo '|---|---|---:|---:|---:|---:|---:|---:|---:|---:|'
-} > "$reports_dir/impacto-commits.md"
+  echo "Comparação: \`$base_branch\` (${base_commit:0:12}) → \`$current_branch\` (${head_commit:0:12})"
+  echo
+  echo '| Métrica | Branch base | Branch atual | Delta |'
+  echo '|---|---:|---:|---:|'
+  printf '| Bugs | %s | %s | %s |\n' "$base_bugs" "$head_bugs" "$(delta "$head_bugs" "$base_bugs")"
+  printf '| Vulnerabilidades | %s | %s | %s |\n' "$base_vulnerabilities" "$head_vulnerabilities" "$(delta "$head_vulnerabilities" "$base_vulnerabilities")"
+  printf '| Hotspots | %s | %s | %s |\n' "$base_hotspots" "$head_hotspots" "$(delta "$head_hotspots" "$base_hotspots")"
+  printf '| Code smells | %s | %s | %s |\n' "$base_smells" "$head_smells" "$(delta "$head_smells" "$base_smells")"
+  printf '| Cobertura | %s | %s | %s |\n' "$base_coverage" "$head_coverage" "$(delta "$head_coverage" "$base_coverage")"
+  printf '| Duplicação | %s | %s | %s |\n' "$base_duplication" "$head_duplication" "$(delta "$head_duplication" "$base_duplication")"
+  printf '| Complexidade | %s | %s | %s |\n' "$base_complexity" "$head_complexity" "$(delta "$head_complexity" "$base_complexity")"
+  printf '| Linhas | %s | %s | %s |\n' "$base_ncloc" "$head_ncloc" "$(delta "$head_ncloc" "$base_ncloc")"
+  echo
+  echo '## Alterações de código entre as branches'
+  echo
+  git diff --stat "$base_commit" "$head_commit"
+  echo
+  echo '## Arquivos alterados'
+  echo
+  git diff --name-status "$base_commit" "$head_commit"
+} > "$reports_dir/impacto-branches.md"
 
-for commit in "${commits[@]}"; do
-  if ! git cat-file -e "$commit:pom.xml" 2>/dev/null; then
-    skipped_commits+=("$commit")
-    continue
-  fi
-  run_analysis "$commit" "$commit"
-  date="$(git show -s --format=%cI "$commit")"
-  parent="$(git rev-parse "$commit^" 2>/dev/null || printf '%s' '-')"
-
-  bugs="$(number_or_na "$(json_value "$analysis_metrics" bugs)")"
-  vulnerabilities="$(number_or_na "$(json_value "$analysis_metrics" vulnerabilities)")"
-  hotspots="$(number_or_na "$(json_value "$analysis_metrics" security_hotspots)")"
-  smells="$(number_or_na "$(json_value "$analysis_metrics" code_smells)")"
-  coverage="$(number_or_na "$(json_value "$analysis_metrics" coverage)")"
-  duplication="$(number_or_na "$(json_value "$analysis_metrics" duplicated_lines_density)")"
-  complexity="$(number_or_na "$(json_value "$analysis_metrics" complexity)")"
-  ncloc="$(number_or_na "$(json_value "$analysis_metrics" ncloc)")"
-
-  previous_bugs="$(number_or_na "$(json_value "$previous_metrics" bugs)")"
-  previous_vulnerabilities="$(number_or_na "$(json_value "$previous_metrics" vulnerabilities)")"
-  previous_hotspots="$(number_or_na "$(json_value "$previous_metrics" security_hotspots)")"
-  previous_smells="$(number_or_na "$(json_value "$previous_metrics" code_smells)")"
-  previous_coverage="$(number_or_na "$(json_value "$previous_metrics" coverage)")"
-  previous_duplication="$(number_or_na "$(json_value "$previous_metrics" duplicated_lines_density)")"
-  previous_complexity="$(number_or_na "$(json_value "$previous_metrics" complexity)")"
-  previous_ncloc="$(number_or_na "$(json_value "$previous_metrics" ncloc)")"
-
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-    "$commit" "${previous_commit:--}" "$date" "$bugs" "$vulnerabilities" "$hotspots" "$smells" "$coverage" "$duplication" "$complexity" "$ncloc" \
-    >> "$reports_dir/commits.csv"
-  previous_ref="${previous_commit:0:12}"
-  if [[ -z "$previous_ref" ]]; then
-    previous_ref="-"
-  fi
-  printf '| `%s` | `%s` | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) | %s (%s) |\n' \
-    "${commit:0:12}" "$previous_ref" "$bugs" "$(delta "$bugs" "$previous_bugs")" "$vulnerabilities" "$(delta "$vulnerabilities" "$previous_vulnerabilities")" "$hotspots" "$(delta "$hotspots" "$previous_hotspots")" "$smells" "$(delta "$smells" "$previous_smells")" "$coverage" "$(delta "$coverage" "$previous_coverage")" "$duplication" "$(delta "$duplication" "$previous_duplication")" "$complexity" "$(delta "$complexity" "$previous_complexity")" "$ncloc" "$(delta "$ncloc" "$previous_ncloc")" \
-    >> "$reports_dir/impacto-commits.md"
-
-  previous_commit="$commit"
-  previous_metrics="$analysis_metrics"
-done
-
-if [[ ${#skipped_commits[@]} -gt 0 ]]; then
-  {
-    echo
-    echo '## Commits ignorados'
-    echo
-    for skipped_commit in "${skipped_commits[@]}"; do
-      echo "- \`$skipped_commit\`: não contém pom.xml e não pode ser analisado pelo Maven."
-    done
-  } >> "$reports_dir/impacto-commits.md"
-fi
-
-git checkout --detach --force "$after_commit" >/dev/null
+git checkout --detach --force "$head_commit" >/dev/null
