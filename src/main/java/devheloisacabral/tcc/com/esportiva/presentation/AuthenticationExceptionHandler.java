@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Map;
 import devheloisacabral.tcc.com.esportiva.application.plan.PlanService.NotFoundException;
@@ -15,6 +16,7 @@ import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeServi
 import devheloisacabral.tcc.com.esportiva.application.turma.TurmaService.InvalidTurmaException;
 import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService.InvalidEnrollmentException;
 import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService;
+import devheloisacabral.tcc.com.esportiva.application.aula.AulaService;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
@@ -46,4 +48,16 @@ public class AuthenticationExceptionHandler {
 
     @ExceptionHandler(EnrollmentService.NotFoundException.class)
     public ResponseEntity<Map<String, String>> enrollmentNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
+
+    @ExceptionHandler(AulaService.NotFoundException.class)
+    public ResponseEntity<Map<String, String>> aulaNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
+
+    @ExceptionHandler(AulaService.WeekdayMismatchException.class)
+    public ResponseEntity<Map<String, String>> weekdayMismatch() { return ResponseEntity.badRequest().body(Map.of("error", "date_does_not_match_turma_weekday")); }
+
+    @ExceptionHandler(AulaService.InvalidAulaException.class)
+    public ResponseEntity<Map<String, String>> invalidAula() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_aula")); }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> accessDenied() { return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "access_denied")); }
 }

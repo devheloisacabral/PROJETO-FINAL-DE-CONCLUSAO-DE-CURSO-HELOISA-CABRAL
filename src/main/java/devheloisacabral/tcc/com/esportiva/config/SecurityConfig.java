@@ -37,6 +37,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/turmas", "/turmas/**").hasAnyRole("ADMIN", "PROFESSOR")
                         .requestMatchers(HttpMethod.POST, "/matriculas").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/matriculas").hasAnyRole("ADMIN", "ALUNO")
+                        .requestMatchers(HttpMethod.POST, "/aulas").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/aulas", "/aulas/**").hasAnyRole("ADMIN", "PROFESSOR", "ALUNO")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
