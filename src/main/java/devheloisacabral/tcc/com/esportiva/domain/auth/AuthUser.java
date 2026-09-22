@@ -64,6 +64,14 @@ public class AuthUser {
         this.status = "inativo";
     }
 
+    public AuthUser(String name, String email, LocalDate birthDate, String passwordHash, UserRole role) {
+        this.name = name;
+        this.email = email;
+        this.birthDate = birthDate;
+        this.passwordHash = passwordHash;
+        this.role = role;
+    }
+
     public Long getId() {
         return id;
     }
@@ -87,4 +95,9 @@ public class AuthUser {
     public Plan getPlan() { return plan; }
     public void setPlan(Plan plan) { this.plan = plan; }
     public void activate() { this.status = "ativo"; }
+    public void updateRegistration(String name, String email, LocalDate birthDate) {
+        this.name = name;
+        this.email = email;
+        this.birthDate = birthDate;
+    }
 }
