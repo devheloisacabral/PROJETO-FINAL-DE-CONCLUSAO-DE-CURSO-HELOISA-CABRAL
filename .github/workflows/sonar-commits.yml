@@ -1,54 +1,63 @@
-name: Sonar - impacto entre branches
+name: SonarCloud - comparar branches
 
 on:
-  push:
-    branches:
-      - '**'
-  pull_request:
-    branches:
-      - '**'
   workflow_dispatch:
+    inputs:
+      branches:
+        description: 'Branches em ordem cronológica, separadas por vírgula ou quebra de linha (use ALL para todas)'
+        required: true
+        default: 'ALL'
+        type: string
+      baseline_branch:
+        description: 'Baseline opcional para calcular o delta da primeira branch'
+        required: false
+        type: string
+      fail_on_quality_gate:
+        description: 'Falhar se alguma branch estiver com Quality Gate reprovado'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
+concurrency:
+  group: sonar-branch-comparison-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  analyze-branches:
+  compare:
+    name: Gerar tabela comparativa
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 15
     env:
       SONAR_HOST_URL: https://sonarcloud.io
       SONAR_PROJECT_KEY: devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS
-      SONAR_ORGANIZATION: devheloisacabral
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_BASE_BRANCH: ${{ github.base_ref }}
-      PUSH_AFTER: ${{ github.sha }}
+      SELECTED_BRANCHES: ${{ inputs.branches }}
+      BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+      FAIL_ON_QUALITY_GATE: ${{ inputs.fail_on_quality_gate }}
     steps:
-      - name: Checkout completo
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: '3.13'
 
-      - name: Configurar JDK 21
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
-        with:
-          java-version: 21
-          distribution: zulu
-          cache: maven
+      - name: Consultar SonarCloud e gerar relatórios
+        run: python3 scripts/sonar/compare_branches.py
 
-      - name: Analisar branch base e branch atual
-        run: |
-          chmod +x scripts/sonar/analyze-commits.sh
-          scripts/sonar/analyze-commits.sh
-
-      - name: Publicar resumo da execução
+      - name: Publicar tabela no resumo
         if: always() && hashFiles('sonar/reports/impacto-branches.md') != ''
         run: cat sonar/reports/impacto-branches.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Arquivar evidências
+      - name: Arquivar CSV, JSON e Markdown
         if: always() && hashFiles('sonar/reports/**') != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
-          name: sonar-impacto-branches-${{ github.run_number }}
+          name: sonar-comparacao-branches-${{ github.run_number }}
           path: sonar/reports/
           retention-days: 90
+          if-no-files-found: error
