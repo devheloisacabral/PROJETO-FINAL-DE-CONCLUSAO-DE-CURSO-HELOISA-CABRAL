@@ -10,6 +10,8 @@ O workflow **SonarCloud - comparar branches** consulta as análises que já exis
 4. Opcionalmente, informe uma **baseline branch**. Ela não vira uma linha: é usada apenas para calcular o impacto da primeira branch selecionada.
 5. Escolha se o job deve falhar quando alguma branch tiver o Quality Gate reprovado.
 
+> **Primeira execução:** o GitHub só habilita o botão **Run workflow** para workflows que já existem na branch padrão do repositório. Portanto, faça o merge deste arquivo na branch padrão uma vez. Depois disso, o seletor do próprio botão permite executar manualmente o workflow a partir de qualquer branch. O arquivo mantém o caminho histórico `.github/workflows/sonar-commits.yml`, evitando invalidar o identificador do workflow que já existia no GitHub Actions.
+
 Ao final, a tabela aparece no **Summary** da execução. Um artefato retido por 90 dias contém:
 
 - `impacto-branches.md`: tabela pronta para leitura;
