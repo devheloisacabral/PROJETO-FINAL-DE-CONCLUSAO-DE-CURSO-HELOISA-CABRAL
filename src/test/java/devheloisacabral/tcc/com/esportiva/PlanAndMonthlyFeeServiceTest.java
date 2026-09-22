@@ -5,15 +5,18 @@ import devheloisacabral.tcc.com.esportiva.application.plan.PlanService;
 import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
 import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFee;
+import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFeePayment;
 import devheloisacabral.tcc.com.esportiva.domain.plan.Plan;
 import devheloisacabral.tcc.com.esportiva.domain.plan.PlanAssignment;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeePaymentRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.plan.PlanAssignmentRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.plan.PlanRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -29,6 +32,7 @@ class PlanAndMonthlyFeeServiceTest {
     @Mock PlanRepository plans;
     @Mock AuthUserRepository users;
     @Mock MonthlyFeeRepository fees;
+    @Mock MonthlyFeePaymentRepository payments;
     @Mock PlanAssignmentRepository assignments;
     @InjectMocks PlanService planService;
     @InjectMocks MonthlyFeeService feeService;
@@ -129,5 +133,76 @@ class PlanAndMonthlyFeeServiceTest {
         assertEquals("ativo", student.getStatus());
         assertEquals("pendente", feeService.cancel(1L, UserRole.ADMIN).status());
         assertThrows(MonthlyFeeService.InvalidStatusException.class, () -> feeService.cancel(1L, UserRole.ADMIN));
+    }
+
+    @Test void partialPaymentKeepsFeePendingAndReportsTotalPaid() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(payments.findAllByMonthlyFeeId(1L)).thenReturn(List.of());
+        when(payments.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+
+        var result = feeService.receive(1L, new BigDecimal("80.00"), UserRole.ADMIN);
+
+        assertEquals("pendente", result.status());
+        assertEquals(new BigDecimal("80.00"), result.totalPaid());
+        assertEquals("inativo", student.getStatus());
+    }
+
+    @Test void feeIsPaidWhenPartialPaymentsReachTheAmount() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment previous = new MonthlyFeePayment(fee, new BigDecimal("80.00"));
+        when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(payments.findAllByMonthlyFeeId(1L)).thenReturn(List.of(previous));
+        when(payments.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+
+        var result = feeService.receive(1L, new BigDecimal("120.00"), UserRole.ADMIN);
+
+        assertEquals("paga", result.status());
+        assertEquals(new BigDecimal("200.00"), result.totalPaid());
+        assertEquals("ativo", student.getStatus());
+    }
+
+    @Test void inactiveStudentIsActivatedOnlyAfterRemainingPayment() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(payments.findAllByMonthlyFeeId(1L)).thenReturn(List.of(), List.of(new MonthlyFeePayment(fee, new BigDecimal("100.00"))));
+        when(payments.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+
+        feeService.receive(1L, new BigDecimal("100.00"), UserRole.ADMIN);
+        assertEquals("inativo", student.getStatus());
+
+        var result = feeService.receive(1L, new BigDecimal("100.00"), UserRole.ADMIN);
+        assertEquals("paga", result.status());
+        assertEquals("ativo", student.getStatus());
+    }
+
+    @Test void paymentAboveRemainingBalanceIsRejected() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment previous = new MonthlyFeePayment(fee, new BigDecimal("150.00"));
+        when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(payments.findAllByMonthlyFeeId(1L)).thenReturn(List.of(previous));
+
+        assertThrows(MonthlyFeeService.PaymentExceedsBalanceException.class,
+                () -> feeService.receive(1L, new BigDecimal("60.00"), UserRole.ADMIN));
+        verify(payments, never()).saveAndFlush(any());
+    }
+
+    @Test void cancellingOnePaymentRecalculatesFeeStatusAndTotal() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment cancelled = new MonthlyFeePayment(fee, new BigDecimal("80.00"));
+        MonthlyFeePayment remaining = new MonthlyFeePayment(fee, new BigDecimal("120.00"));
+        when(payments.findById(1L)).thenReturn(Optional.of(cancelled));
+        when(payments.findAllByMonthlyFeeId(null)).thenReturn(List.of(cancelled, remaining));
+
+        var result = feeService.cancelPayment(1L, UserRole.ADMIN);
+
+        assertEquals("pendente", result.status());
+        assertEquals(new BigDecimal("120.00"), result.totalPaid());
+        assertEquals("cancelado", cancelled.getStatus());
     }
 }
