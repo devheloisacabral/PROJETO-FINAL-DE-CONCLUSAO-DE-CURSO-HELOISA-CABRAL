@@ -24,7 +24,7 @@ public class MonthlyFeeService {
         requireAdmin(role);
         AuthUser student = users.findByIdAndRole(studentId, UserRole.ALUNO).orElseThrow(NotFoundException::new);
         if (student.getPlan() == null) throw new MissingPlanException();
-        try { return FeeResult.from(fees.saveAndFlush(new MonthlyFee(student, referenceMonth.withDayOfMonth(1), student.getPlan().getAmount()))); }
+        try { return FeeResult.from(fees.saveAndFlush(new MonthlyFee(student, referenceMonth.withDayOfMonth(1), student.getPlan().getAmount(), student.getDueDay()))); }
         catch (DataIntegrityViolationException ex) { throw new DuplicateFeeException(); }
     }
 

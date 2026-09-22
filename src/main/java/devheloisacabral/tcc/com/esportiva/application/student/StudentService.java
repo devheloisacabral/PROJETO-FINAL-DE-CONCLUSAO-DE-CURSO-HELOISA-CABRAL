@@ -42,11 +42,20 @@ public class StudentService {
         throw new AccessDeniedException("student access is not authorized");
     }
 
-    public record StudentResult(Long id, String name, String email, String phone, LocalDate birthDate, String status) {
+    @Transactional
+    public StudentResult configureDueDay(Long studentId, Integer dueDay, UserRole role) {
+        if (role != UserRole.ADMIN) throw new AccessDeniedException("administrative operation is not authorized");
+        AuthUser student = users.findByIdAndRole(studentId, UserRole.ALUNO).orElseThrow(StudentNotFoundException::new);
+        student.setDueDay(dueDay);
+        return StudentResult.from(student);
+    }
+
+    public record StudentResult(Long id, String name, String email, String phone, LocalDate birthDate, String status, Integer dueDay) {
         static StudentResult from(AuthUser user) {
-            return new StudentResult(user.getId(), user.getName(), user.getEmail(), user.getPhone(), user.getBirthDate(), user.getStatus());
+            return new StudentResult(user.getId(), user.getName(), user.getEmail(), user.getPhone(), user.getBirthDate(), user.getStatus(), user.getDueDay());
         }
     }
 
     public static class EmailAlreadyUsedException extends RuntimeException {}
+    public static class StudentNotFoundException extends RuntimeException {}
 }

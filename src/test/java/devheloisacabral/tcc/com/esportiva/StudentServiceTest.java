@@ -73,4 +73,25 @@ class StudentServiceTest {
         assertThrows(AccessDeniedException.class, () -> service.findFor(4L, UserRole.PROFESSOR));
         verifyNoInteractions(users);
     }
+
+    @Test
+    void shouldConfigureAValidIndividualDueDayForAnAdmin() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        when(users.findByIdAndRole(7L, UserRole.ALUNO)).thenReturn(Optional.of(student));
+
+        var result = service.configureDueDay(7L, 15, UserRole.ADMIN);
+
+        assertEquals(15, result.dueDay());
+        assertEquals(15, student.getDueDay());
+    }
+
+    @Test
+    void shouldRejectAnInvalidIndividualDueDayWithoutChangingTheStudent() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        when(users.findByIdAndRole(7L, UserRole.ALUNO)).thenReturn(Optional.of(student));
+
+        assertThrows(AuthUser.InvalidDueDayException.class,
+                () -> service.configureDueDay(7L, 31, UserRole.ADMIN));
+        assertEquals(10, student.getDueDay());
+    }
 }

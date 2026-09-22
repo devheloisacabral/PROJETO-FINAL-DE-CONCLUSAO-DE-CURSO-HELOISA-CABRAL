@@ -1,0 +1,3 @@
+ALTER TABLE users
+    ADD COLUMN due_day INTEGER NOT NULL DEFAULT 10,
+    ADD CONSTRAINT ck_users_due_day CHECK (due_day BETWEEN 1 AND 28);
