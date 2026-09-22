@@ -49,6 +49,9 @@ public class AuthenticationExceptionHandler {
     @ExceptionHandler(InvalidEnrollmentException.class)
     public ResponseEntity<Map<String, String>> invalidEnrollment() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "invalid_enrollment")); }
 
+    @ExceptionHandler({EnrollmentService.OverdueMonthlyFeeException.class, PresencaService.OverdueMonthlyFeeException.class})
+    public ResponseEntity<Map<String, String>> overdueMonthlyFee() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "student_in_debt")); }
+
     @ExceptionHandler(EnrollmentService.NotFoundException.class)
     public ResponseEntity<Map<String, String>> enrollmentNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
 

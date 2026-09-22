@@ -7,22 +7,27 @@ import devheloisacabral.tcc.com.esportiva.domain.presenca.Presenca;
 import devheloisacabral.tcc.com.esportiva.persistence.aula.AulaRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.presenca.PresencaRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
 public class PresencaService {
     private final PresencaRepository presencas;
     private final AuthUserRepository users;
+    private final MonthlyFeeRepository fees;
     private final AulaRepository aulas;
 
-    public PresencaService(PresencaRepository presencas, AuthUserRepository users, AulaRepository aulas) {
+    public PresencaService(PresencaRepository presencas, AuthUserRepository users,
+                           MonthlyFeeRepository fees, AulaRepository aulas) {
         this.presencas = presencas;
         this.users = users;
+        this.fees = fees;
         this.aulas = aulas;
     }
 
@@ -34,6 +39,9 @@ public class PresencaService {
         AuthUser student = users.findByIdAndRole(studentId, UserRole.ALUNO).orElseThrow(NotFoundException::new);
         Aula aula = aulas.findByIdWithTurma(aulaId).orElseThrow(NotFoundException::new);
         if (!"ativo".equals(student.getStatus())) throw new InactiveStudentException();
+        if (fees.existsByStudentIdAndStatusAndDueDateBefore(studentId, "pendente", LocalDate.now())) {
+            throw new OverdueMonthlyFeeException();
+        }
         if (role == UserRole.PROFESSOR && aula.getTurma().getProfessors().stream()
                 .noneMatch(professor -> professor.getUser().getId().equals(authenticatedUserId))) {
             throw new AccessDeniedException("attendance lesson access is not authorized");
@@ -66,5 +74,6 @@ public class PresencaService {
     public record StudentResult(Long id, String name) {}
     public record AulaResult(Long id, Long turmaId) {}
     public static class InactiveStudentException extends RuntimeException {}
+    public static class OverdueMonthlyFeeException extends RuntimeException {}
     public static class NotFoundException extends RuntimeException {}
 }

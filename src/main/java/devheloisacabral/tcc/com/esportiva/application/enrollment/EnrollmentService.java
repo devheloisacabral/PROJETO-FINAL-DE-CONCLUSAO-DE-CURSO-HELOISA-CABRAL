@@ -6,23 +6,28 @@ import devheloisacabral.tcc.com.esportiva.domain.enrollment.Enrollment;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.enrollment.EnrollmentRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.turma.TurmaRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
 public class EnrollmentService {
     private final EnrollmentRepository enrollments;
     private final AuthUserRepository users;
+    private final MonthlyFeeRepository fees;
     private final TurmaRepository turmas;
 
-    public EnrollmentService(EnrollmentRepository enrollments, AuthUserRepository users, TurmaRepository turmas) {
+    public EnrollmentService(EnrollmentRepository enrollments, AuthUserRepository users,
+                             MonthlyFeeRepository fees, TurmaRepository turmas) {
         this.enrollments = enrollments;
         this.users = users;
+        this.fees = fees;
         this.turmas = turmas;
     }
 
@@ -33,6 +38,9 @@ public class EnrollmentService {
         Turma turma = turmas.findByIdForEnrollment(turmaId).orElseThrow(NotFoundException::new);
         if (!"ativo".equals(student.getStatus()) || !"ativa".equals(turma.getStatus())) {
             throw new InvalidEnrollmentException();
+        }
+        if (fees.existsByStudentIdAndStatusAndDueDateBefore(studentId, "pendente", LocalDate.now())) {
+            throw new OverdueMonthlyFeeException();
         }
         if (enrollments.countByTurmaId(turmaId) >= turma.getMaxCapacity()) {
             throw new InvalidEnrollmentException();
@@ -63,5 +71,6 @@ public class EnrollmentService {
     public record StudentResult(Long id, String name, String email, String status) {}
     public record TurmaResult(Long id, String name, String status) {}
     public static class InvalidEnrollmentException extends RuntimeException {}
+    public static class OverdueMonthlyFeeException extends RuntimeException {}
     public static class NotFoundException extends RuntimeException {}
 }
