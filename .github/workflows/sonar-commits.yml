@@ -1,0 +1,67 @@
+name: SonarCloud - comparar branches
+
+on:
+  workflow_dispatch:
+    inputs:
+      branches:
+        description: 'Branches em ordem cronológica, separadas por vírgula ou quebra de linha (use ALL para todas)'
+        required: true
+        default: 'ALL'
+        type: string
+      baseline_branch:
+        description: 'Baseline opcional para calcular o delta da primeira branch'
+        required: false
+        type: string
+      fail_on_quality_gate:
+        description: 'Falhar se alguma branch estiver com Quality Gate reprovado'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-branch-comparison-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    name: Gerar tabela comparativa
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SONAR_HOST_URL: https://sonarcloud.io
+      SONAR_PROJECT_KEY: devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SELECTED_BRANCHES: ${{ inputs.branches }}
+      BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+      FAIL_ON_QUALITY_GATE: ${{ inputs.fail_on_quality_gate }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Java 21 e cache Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Analisar branches em projetos independentes e gerar relatórios
+        run: python3 scripts/sonar/compare_branches.py
+
+      - name: Publicar tabela no resumo
+        if: always() && hashFiles('sonar/reports/impacto-branches.md') != ''
+        run: cat sonar/reports/impacto-branches.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Arquivar CSV, JSON e Markdown
+        if: always() && hashFiles('sonar/reports/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-comparacao-branches-${{ github.run_number }}
+          path: sonar/reports/
+          retention-days: 90
+          if-no-files-found: error

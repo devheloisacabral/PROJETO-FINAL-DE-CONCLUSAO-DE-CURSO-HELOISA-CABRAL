@@ -28,6 +28,7 @@ public class SecurityConfig {
                         .requestMatchers("/health", "/auth/login", "/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.POST, "/alunos", "/planos", "/mensalidades").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/alunos/*/plano").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/alunos/*/vencimento").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/mensalidades/*/receber", "/mensalidades/*/cancelar").hasRole("ADMIN")
                         .requestMatchers("/professores", "/professores/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/turmas", "/turmas/**").hasRole("ADMIN")

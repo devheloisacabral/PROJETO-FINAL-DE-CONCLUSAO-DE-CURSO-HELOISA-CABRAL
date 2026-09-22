@@ -37,15 +37,24 @@ class PlanAndMonthlyFeeServiceTest {
         verify(plans, times(1)).save(any());
     }
 
-    @Test void monthlyFeeUsesPlanValueAndDueDayTen() {
+    @Test void monthlyFeeUsesPlanValueAndIndividualDueDay() {
         AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
         student.setPlan(new Plan("Mensal", new BigDecimal("120.00")));
+        student.setDueDay(20);
         when(users.findByIdAndRole(7L, UserRole.ALUNO)).thenReturn(Optional.of(student));
         when(fees.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
         var result = feeService.create(7L, LocalDate.of(2026, 9, 1), UserRole.ADMIN);
         assertEquals(new BigDecimal("120.00"), result.amount());
-        assertEquals(LocalDate.of(2026, 9, 10), result.dueDate());
+        assertEquals(LocalDate.of(2026, 9, 20), result.dueDate());
         assertEquals("pendente", result.status());
+    }
+
+    @Test void changingStudentDueDayDoesNotChangeAnExistingFee() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 10, 1), new BigDecimal("120.00"));
+        student.setDueDay(18);
+
+        assertEquals(LocalDate.of(2026, 10, 10), fee.getDueDate());
     }
 
     @Test void receivingActivatesStudentAndCancellingReturnsToPending() {

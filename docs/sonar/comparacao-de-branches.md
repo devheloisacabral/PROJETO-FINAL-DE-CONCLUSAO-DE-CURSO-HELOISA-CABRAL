@@ -1,31 +1,42 @@
 # Comparação das branches no SonarCloud
 
-O workflow **SonarCloud - comparar branches** consulta as análises que já existem no SonarCloud e produz uma tabela na qual cada branch é comparada à branch anterior. Ele não executa uma nova análise nem modifica o histórico do projeto.
+O workflow **SonarCloud - comparar branches** cria um projeto SonarCloud independente para cada branch experimental, analisa cada checkout como a branch principal desse projeto e compara os resultados na ordem informada. Isso funciona em organizações que não oferecem análise de branches secundárias.
+
+## Pré-requisitos
+
+Em `Settings > Secrets and variables > Actions`, crie o secret `SONAR_TOKEN`. Além da permissão de executar análises, o token deve pertencer a um usuário autorizado a **Create Projects** na organização `devheloisacabral`. O token não é incluído nos relatórios.
+
+O workflow usa a chave original como prefixo e gera uma chave determinística para cada branch, por exemplo:
+
+```text
+devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS__experiment__prompt-01-a1b2c3d4
+```
+
+Execuções posteriores reutilizam o mesmo projeto daquela branch, em vez de criar duplicatas. O hash evita colisões entre nomes de branch que gerariam o mesmo identificador normalizado.
 
 ## Como executar
 
-1. Confirme em `Settings > Secrets and variables > Actions` que o secret `SONAR_TOKEN` existe. O token precisa de permissão para navegar pelo projeto.
+1. Faça o merge do workflow na branch padrão; o GitHub só exibe **Run workflow** para arquivos presentes nela.
 2. Abra `Actions > SonarCloud - comparar branches > Run workflow`.
-3. Em **branches**, informe de uma a dez branches na ordem do experimento, separadas por vírgulas, ponto e vírgula ou quebras de linha. Exemplo: `prompt-01, prompt-02, prompt-03`. Use `ALL` para incluir todas as branches analisadas, em ordem natural do nome.
-4. Opcionalmente, informe uma **baseline branch**. Ela não vira uma linha: é usada apenas para calcular o impacto da primeira branch selecionada.
-5. Escolha se o job deve falhar quando alguma branch tiver o Quality Gate reprovado.
+3. Em **branches**, informe de uma a dez branches na ordem do experimento, separadas por vírgula, ponto e vírgula ou quebra de linha. Exemplo: `prompt-01, prompt-02, prompt-03`.
+4. `ALL` inclui até dez referências remotas, em ordem natural. Se o repositório tiver outras branches, informe explicitamente apenas as dez experimentais.
+5. A **baseline branch** é opcional: ela também ganha um projeto, mas serve somente para calcular o primeiro delta.
+6. Escolha se um Quality Gate reprovado deve falhar o job.
 
-Ao final, a tabela aparece no **Summary** da execução. Um artefato retido por 90 dias contém:
+Para cada branch, o workflow faz checkout detached, executa `mvn verify`, gera o relatório JaCoCo, executa o SonarScanner, aguarda o processamento no SonarCloud e só então coleta as métricas. Nenhuma análise usa o recurso de branch secundária do SonarCloud.
 
-- `impacto-branches.md`: tabela pronta para leitura;
-- `impacto-branches.csv`: valores e deltas de todas as métricas, adequado para Excel, LibreOffice, R ou Python;
-- `impacto-branches.json`: dados estruturados e metadados da coleta.
+## Resultados
 
-## Métricas
+O Summary contém uma tabela com uma linha por branch e links para os projetos independentes. O artefato retido por 90 dias contém:
 
-A tabela apresenta bugs, vulnerabilidades, hotspots de segurança, code smells, cobertura, cobertura de branches, duplicação, complexidade, complexidade cognitiva e linhas de código. O CSV também inclui cobertura de linhas, blocos duplicados, testes e densidade de sucesso dos testes.
+- `impacto-branches.md`: tabela para leitura;
+- `impacto-branches.csv`: métricas e deltas para Excel, LibreOffice, R ou Python;
+- `impacto-branches.json`: dados estruturados, commits e chaves dos projetos.
 
-O número entre parênteses é o delta (`branch atual - branch anterior`). A cobertura maior é considerada melhora; para defeitos, duplicação e complexidade, valores menores são considerados melhora. A cor é apenas um auxílio visual e não substitui a interpretação do experimento.
+A tabela apresenta bugs, vulnerabilidades, hotspots, code smells, cobertura, cobertura de branches, duplicação, complexidade, complexidade cognitiva e linhas de código. O CSV também contém cobertura de linhas, blocos duplicados e métricas de testes. Valores ausentes aparecem como `N/D`, nunca como zero.
 
-## Observações importantes
+O delta é `branch atual - branch anterior`. Cobertura maior é marcada como melhora; para defeitos, duplicação e complexidade, valores menores são marcados como melhora. A cor é somente um auxílio visual e não prova causalidade.
 
-- A branch precisa ter sido analisada no mesmo projeto do SonarCloud antes da coleta.
-- A ordem digitada é preservada. Com `ALL`, nomes são ordenados naturalmente (`prompt-2` antes de `prompt-10`).
-- Métricas indisponíveis aparecem como `N/D`, sem serem convertidas incorretamente para zero.
-- Um snapshot mostra o estado da branch na última análise disponível; ele não prova causalidade isoladamente.
-- O token nunca é gravado nos relatórios ou enviado como parâmetro de URL.
+## Limpeza
+
+Os projetos são mantidos para garantir rastreabilidade e permitir repetição do experimento. Se precisar removê-los, faça isso pelo SonarCloud somente depois de exportar os artefatos; filtre projetos cuja chave contenha `__experiment__`. O workflow nunca remove projetos automaticamente.
