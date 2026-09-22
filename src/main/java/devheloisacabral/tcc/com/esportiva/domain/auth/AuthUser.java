@@ -9,6 +9,9 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import devheloisacabral.tcc.com.esportiva.domain.plan.Plan;
 import java.time.LocalDate;
 
 @Entity
@@ -37,6 +40,10 @@ public class AuthUser {
     private LocalDate birthDate;
     @Column(length = 20)
     private String status;
+
+    @ManyToOne
+    @JoinColumn(name = "plan_id")
+    private Plan plan;
 
     protected AuthUser() {
     }
@@ -77,4 +84,7 @@ public class AuthUser {
     public String getPhone() { return phone; }
     public LocalDate getBirthDate() { return birthDate; }
     public String getStatus() { return status; }
+    public Plan getPlan() { return plan; }
+    public void setPlan(Plan plan) { this.plan = plan; }
+    public void activate() { this.status = "ativo"; }
 }

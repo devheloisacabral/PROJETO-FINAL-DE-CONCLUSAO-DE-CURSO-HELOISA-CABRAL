@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
@@ -24,8 +26,9 @@ import java.util.List;
 @RequestMapping("/alunos")
 public class StudentController {
     private final StudentService service;
+    private final devheloisacabral.tcc.com.esportiva.application.plan.PlanService planService;
 
-    public StudentController(StudentService service) { this.service = service; }
+    public StudentController(StudentService service, devheloisacabral.tcc.com.esportiva.application.plan.PlanService planService) { this.service = service; this.planService = planService; }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -39,8 +42,16 @@ public class StudentController {
         return service.findFor(Long.parseLong(authentication.getName()), role);
     }
 
+    @PutMapping("/{studentId}/plano")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void associatePlan(@PathVariable Long studentId, @Valid @RequestBody AssociatePlanRequest request, Authentication authentication) {
+        UserRole role = UserRole.valueOf(authentication.getAuthorities().iterator().next().getAuthority().substring(5));
+        planService.associate(studentId, request.planId(), role);
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = false)
     public record CreateStudentRequest(@NotBlank String name, @NotBlank @Email String email,
                                        @NotBlank String phone, @NotNull @Past LocalDate birthDate,
                                        @NotBlank String password) {}
+    public record AssociatePlanRequest(@NotNull Long planId) {}
 }

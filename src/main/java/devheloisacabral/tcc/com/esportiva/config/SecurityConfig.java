@@ -10,6 +10,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 
 @Configuration
 @EnableWebSecurity
@@ -25,7 +26,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/health", "/auth/login", "/auth/refresh").permitAll()
-                        .requestMatchers("POST", "/alunos").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/alunos", "/planos", "/mensalidades").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/alunos/*/plano").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/mensalidades/*/receber", "/mensalidades/*/cancelar").hasRole("ADMIN")
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
