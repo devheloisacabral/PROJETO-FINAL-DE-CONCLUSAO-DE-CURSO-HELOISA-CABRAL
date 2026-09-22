@@ -13,6 +13,8 @@ import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeServi
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.MissingPlanException;
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.InvalidStatusException;
 import devheloisacabral.tcc.com.esportiva.application.turma.TurmaService.InvalidTurmaException;
+import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService.InvalidEnrollmentException;
+import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
@@ -38,4 +40,10 @@ public class AuthenticationExceptionHandler {
 
     @ExceptionHandler(InvalidTurmaException.class)
     public ResponseEntity<Map<String, String>> invalidTurma() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_turma")); }
+
+    @ExceptionHandler(InvalidEnrollmentException.class)
+    public ResponseEntity<Map<String, String>> invalidEnrollment() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "invalid_enrollment")); }
+
+    @ExceptionHandler(EnrollmentService.NotFoundException.class)
+    public ResponseEntity<Map<String, String>> enrollmentNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
 }
