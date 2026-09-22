@@ -1,12 +1,15 @@
 package devheloisacabral.tcc.com.esportiva;
 
 import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService;
+import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService;
 import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
+import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFee;
 import devheloisacabral.tcc.com.esportiva.domain.professor.Professor;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.enrollment.EnrollmentRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.turma.TurmaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import org.springframework.security.access.AccessDeniedException;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.math.BigDecimal;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +29,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,6 +39,7 @@ import static org.mockito.Mockito.when;
 class EnrollmentServiceTest {
     @Mock EnrollmentRepository enrollments;
     @Mock AuthUserRepository users;
+    @Mock MonthlyFeeRepository fees;
     @Mock TurmaRepository turmas;
     private EnrollmentService service;
     private AuthUser activeStudent;
@@ -40,7 +47,7 @@ class EnrollmentServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new EnrollmentService(enrollments, users, turmas);
+        service = new EnrollmentService(enrollments, users, fees, turmas);
         activeStudent = student(20L, "Ana");
         activeStudent.activate();
         activeTurma = turma(30L, "Vôlei", "ativa", 2);
@@ -51,6 +58,7 @@ class EnrollmentServiceTest {
         when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
         when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
         when(enrollments.countByTurmaId(30L)).thenReturn(0L);
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
         when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = service.create(20L, 30L, UserRole.ADMIN);
@@ -90,6 +98,46 @@ class EnrollmentServiceTest {
 
         assertThrows(EnrollmentService.InvalidEnrollmentException.class, () -> service.create(20L, 30L, UserRole.ADMIN));
         verify(enrollments, never()).save(any());
+    }
+
+    @Test
+    void rejectsStudentWithOverduePendingMonthlyFeeWithoutCreatingEnrollment() {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(true);
+
+        assertThrows(EnrollmentService.OverdueMonthlyFeeException.class, () -> service.create(20L, 30L, UserRole.ADMIN));
+        verify(enrollments, never()).countByTurmaId(anyLong());
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test
+    void allowsStudentWithFuturePendingMonthlyFee() throws Exception {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
+        when(enrollments.countByTurmaId(30L)).thenReturn(0L);
+        when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertEquals(30L, service.create(20L, 30L, UserRole.ADMIN).turma().id());
+        verify(enrollments).save(any());
+    }
+
+    @Test
+    void receivingOnlyOverdueMonthlyFeeRemovesOperationalBlock() throws Exception {
+        MonthlyFee fee = new MonthlyFee(activeStudent, LocalDate.now().minusMonths(1).withDayOfMonth(1), BigDecimal.TEN);
+        when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class)))
+                .thenAnswer(invocation -> "pendente".equals(fee.getStatus()));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(enrollments.countByTurmaId(30L)).thenReturn(0L);
+        when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MonthlyFeeService feeService = new MonthlyFeeService(fees, users);
+        assertEquals("paga", feeService.receive(1L, UserRole.ADMIN).status());
+        assertEquals(30L, service.create(20L, 30L, UserRole.ADMIN).turma().id());
+        verify(enrollments).save(any());
     }
 
     @Test

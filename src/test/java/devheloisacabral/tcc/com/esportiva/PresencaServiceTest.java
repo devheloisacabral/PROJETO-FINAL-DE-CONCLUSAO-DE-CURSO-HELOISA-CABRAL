@@ -10,6 +10,7 @@ import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.aula.AulaRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.presenca.PresencaRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +35,7 @@ class PresencaServiceTest {
     @Mock PresencaRepository presencas;
     @Mock AuthUserRepository users;
     @Mock AulaRepository aulas;
+    @Mock MonthlyFeeRepository fees;
     private PresencaService service;
     private AuthUser aluno;
     private Aula aula;
@@ -42,7 +44,7 @@ class PresencaServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new PresencaService(presencas, users, aulas);
+        service = new PresencaService(presencas, users, fees, aulas);
         aluno = student(50L, "ativo");
         AuthUser professorUser = new AuthUser("Professor", "p@example.com", LocalDate.of(1980, 1, 1), "hash", UserRole.PROFESSOR);
         setId(professorUser, 40L);
@@ -60,6 +62,7 @@ class PresencaServiceTest {
 
     @Test
     void adminRegistersActiveStudentAndProfessorRegistersInAssociatedClass() {
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
         assertNotNull(service.create(50L, 70L, UserRole.ADMIN, 1L));
         assertNotNull(service.create(50L, 70L, UserRole.PROFESSOR, 40L));
         verify(presencas, times(2)).save(any(Presenca.class));
@@ -70,6 +73,15 @@ class PresencaServiceTest {
         setField(aluno, "status", "inativo");
         assertThrows(PresencaService.InactiveStudentException.class, () -> service.create(50L, 70L, UserRole.ADMIN, 1L));
         assertThrows(PresencaService.InactiveStudentException.class, () -> service.create(50L, 70L, UserRole.PROFESSOR, 40L));
+        verify(presencas, never()).save(any());
+    }
+
+    @Test
+    void blocksPresenceForStudentWithOverduePendingMonthlyFeeWithoutSaving() {
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(true);
+
+        assertThrows(PresencaService.OverdueMonthlyFeeException.class,
+                () -> service.create(50L, 70L, UserRole.PROFESSOR, 40L));
         verify(presencas, never()).save(any());
     }
 
