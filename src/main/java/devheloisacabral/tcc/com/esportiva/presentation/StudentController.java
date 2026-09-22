@@ -49,7 +49,7 @@ public class StudentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void associatePlan(@PathVariable Long studentId, @Valid @RequestBody AssociatePlanRequest request, Authentication authentication) {
         UserRole role = UserRole.valueOf(authentication.getAuthorities().iterator().next().getAuthority().substring(5));
-        planService.associate(studentId, request.planId(), role);
+        planService.associate(studentId, request.planId(), request.validFrom(), role);
     }
 
     @PatchMapping("/{studentId}/vencimento")
@@ -62,6 +62,6 @@ public class StudentController {
     public record CreateStudentRequest(@NotBlank String name, @NotBlank @Email String email,
                                        @NotBlank String phone, @NotNull @Past LocalDate birthDate,
                                        @NotBlank String password) {}
-    public record AssociatePlanRequest(@NotNull Long planId) {}
+    public record AssociatePlanRequest(@NotNull Long planId, @NotNull LocalDate validFrom) {}
     public record ConfigureDueDayRequest(@NotNull @Min(1) @Max(28) Integer dueDay) {}
 }

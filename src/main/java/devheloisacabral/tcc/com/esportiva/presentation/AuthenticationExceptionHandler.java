@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 import java.util.Map;
 import devheloisacabral.tcc.com.esportiva.application.plan.PlanService.NotFoundException;
+import devheloisacabral.tcc.com.esportiva.application.plan.PlanService.DuplicatePlanAssignmentException;
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.DuplicateFeeException;
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.MissingPlanException;
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.InvalidStatusException;
@@ -37,6 +38,8 @@ public class AuthenticationExceptionHandler {
 
     @ExceptionHandler(DuplicateFeeException.class)
     public ResponseEntity<Map<String, String>> duplicateFee() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "monthly_fee_already_exists")); }
+    @ExceptionHandler(DuplicatePlanAssignmentException.class)
+    public ResponseEntity<Map<String, String>> duplicatePlanAssignment() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "plan_change_already_exists")); }
     @ExceptionHandler({MissingPlanException.class, InvalidStatusException.class})
     public ResponseEntity<Map<String, String>> invalidOperation(RuntimeException ex) { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "invalid_monthly_fee_operation")); }
     @ExceptionHandler({NotFoundException.class, devheloisacabral.tcc.com.esportiva.application.professor.ProfessorService.NotFoundException.class,
