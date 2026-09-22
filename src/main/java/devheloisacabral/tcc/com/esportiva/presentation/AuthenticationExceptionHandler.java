@@ -19,6 +19,7 @@ import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentServi
 import devheloisacabral.tcc.com.esportiva.application.aula.AulaService;
 import devheloisacabral.tcc.com.esportiva.application.presenca.PresencaService;
 import devheloisacabral.tcc.com.esportiva.application.dashboard.DashboardService;
+import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser.InvalidDueDayException;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
@@ -71,4 +72,10 @@ public class AuthenticationExceptionHandler {
 
     @ExceptionHandler(DashboardService.InvalidMonthException.class)
     public ResponseEntity<Map<String, String>> invalidMonth() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_reference_month")); }
+
+    @ExceptionHandler(InvalidDueDayException.class)
+    public ResponseEntity<Map<String, String>> invalidDueDay() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_due_day")); }
+
+    @ExceptionHandler(devheloisacabral.tcc.com.esportiva.application.student.StudentService.StudentNotFoundException.class)
+    public ResponseEntity<Map<String, String>> studentNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
 }

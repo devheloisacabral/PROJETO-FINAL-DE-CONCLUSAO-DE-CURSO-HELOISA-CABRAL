@@ -23,7 +23,10 @@ public class MonthlyFee {
 
     protected MonthlyFee() {}
     public MonthlyFee(AuthUser student, LocalDate referenceMonth, BigDecimal amount) {
-        this.student = student; this.referenceMonth = referenceMonth; this.dueDate = referenceMonth.withDayOfMonth(10); this.amount = amount; this.status = "pendente";
+        this(student, referenceMonth, amount, student.getDueDay());
+    }
+    public MonthlyFee(AuthUser student, LocalDate referenceMonth, BigDecimal amount, Integer dueDay) {
+        this.student = student; this.referenceMonth = referenceMonth; this.dueDate = referenceMonth.withDayOfMonth(dueDay); this.amount = amount; this.status = "pendente";
     }
     public Long getId() { return id; }
     public AuthUser getStudent() { return student; }
