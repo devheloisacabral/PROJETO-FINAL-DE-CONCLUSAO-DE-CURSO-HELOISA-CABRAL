@@ -17,6 +17,7 @@ import devheloisacabral.tcc.com.esportiva.application.turma.TurmaService.Invalid
 import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService.InvalidEnrollmentException;
 import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService;
 import devheloisacabral.tcc.com.esportiva.application.aula.AulaService;
+import devheloisacabral.tcc.com.esportiva.application.presenca.PresencaService;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
@@ -57,6 +58,12 @@ public class AuthenticationExceptionHandler {
 
     @ExceptionHandler(AulaService.InvalidAulaException.class)
     public ResponseEntity<Map<String, String>> invalidAula() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_aula")); }
+
+    @ExceptionHandler(PresencaService.InactiveStudentException.class)
+    public ResponseEntity<Map<String, String>> inactiveStudent() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "inactive_student")); }
+
+    @ExceptionHandler(PresencaService.NotFoundException.class)
+    public ResponseEntity<Map<String, String>> presencaNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, String>> accessDenied() { return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "access_denied")); }
