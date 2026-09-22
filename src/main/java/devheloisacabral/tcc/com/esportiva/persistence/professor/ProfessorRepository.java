@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface ProfessorRepository extends JpaRepository<Professor, Long> {
     List<Professor> findAllByOrderByIdAsc();
+    java.util.Optional<Professor> findByUser_Id(Long userId);
 }

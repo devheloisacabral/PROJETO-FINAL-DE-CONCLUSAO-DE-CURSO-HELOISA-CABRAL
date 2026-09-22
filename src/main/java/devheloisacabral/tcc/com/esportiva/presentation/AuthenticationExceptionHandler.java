@@ -12,6 +12,7 @@ import devheloisacabral.tcc.com.esportiva.application.plan.PlanService.NotFoundE
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.DuplicateFeeException;
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.MissingPlanException;
 import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeService.InvalidStatusException;
+import devheloisacabral.tcc.com.esportiva.application.turma.TurmaService.InvalidTurmaException;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
@@ -31,6 +32,10 @@ public class AuthenticationExceptionHandler {
     public ResponseEntity<Map<String, String>> duplicateFee() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "monthly_fee_already_exists")); }
     @ExceptionHandler({MissingPlanException.class, InvalidStatusException.class})
     public ResponseEntity<Map<String, String>> invalidOperation(RuntimeException ex) { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "invalid_monthly_fee_operation")); }
-    @ExceptionHandler({NotFoundException.class, devheloisacabral.tcc.com.esportiva.application.professor.ProfessorService.NotFoundException.class})
+    @ExceptionHandler({NotFoundException.class, devheloisacabral.tcc.com.esportiva.application.professor.ProfessorService.NotFoundException.class,
+            devheloisacabral.tcc.com.esportiva.application.turma.TurmaService.NotFoundException.class})
     public ResponseEntity<Map<String, String>> notFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
+
+    @ExceptionHandler(InvalidTurmaException.class)
+    public ResponseEntity<Map<String, String>> invalidTurma() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_turma")); }
 }
