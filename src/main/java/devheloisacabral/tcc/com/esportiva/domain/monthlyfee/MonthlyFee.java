@@ -36,4 +36,7 @@ public class MonthlyFee {
     public String getStatus() { return status; }
     public void pay() { status = "paga"; }
     public void cancelPayment() { status = "pendente"; }
+    public void updateStatus(BigDecimal totalPaid) {
+        status = totalPaid.compareTo(amount) >= 0 ? "paga" : "pendente";
+    }
 }
