@@ -41,6 +41,9 @@ public class AuthUser {
     @Column(length = 20)
     private String status;
 
+    @Column(name = "due_day", nullable = false)
+    private Integer dueDay = 10;
+
     @ManyToOne
     @JoinColumn(name = "plan_id")
     private Plan plan;
@@ -92,12 +95,19 @@ public class AuthUser {
     public String getPhone() { return phone; }
     public LocalDate getBirthDate() { return birthDate; }
     public String getStatus() { return status; }
+    public Integer getDueDay() { return dueDay; }
     public Plan getPlan() { return plan; }
     public void setPlan(Plan plan) { this.plan = plan; }
+    public void setDueDay(Integer dueDay) {
+        if (dueDay == null || dueDay < 1 || dueDay > 28) throw new InvalidDueDayException();
+        this.dueDay = dueDay;
+    }
     public void activate() { this.status = "ativo"; }
     public void updateRegistration(String name, String email, LocalDate birthDate) {
         this.name = name;
         this.email = email;
         this.birthDate = birthDate;
     }
+
+    public static class InvalidDueDayException extends RuntimeException {}
 }
