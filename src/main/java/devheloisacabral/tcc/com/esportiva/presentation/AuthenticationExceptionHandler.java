@@ -18,6 +18,7 @@ import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentServi
 import devheloisacabral.tcc.com.esportiva.application.enrollment.EnrollmentService;
 import devheloisacabral.tcc.com.esportiva.application.aula.AulaService;
 import devheloisacabral.tcc.com.esportiva.application.presenca.PresencaService;
+import devheloisacabral.tcc.com.esportiva.application.dashboard.DashboardService;
 
 @RestControllerAdvice
 public class AuthenticationExceptionHandler {
@@ -67,4 +68,7 @@ public class AuthenticationExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, String>> accessDenied() { return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "access_denied")); }
+
+    @ExceptionHandler(DashboardService.InvalidMonthException.class)
+    public ResponseEntity<Map<String, String>> invalidMonth() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_reference_month")); }
 }

@@ -7,6 +7,9 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import org.springframework.data.domain.Pageable;
 
 public interface AulaRepository extends JpaRepository<Aula, Long> {
     @Query("select a from Aula a join fetch a.turma order by a.id")
@@ -20,4 +23,7 @@ public interface AulaRepository extends JpaRepository<Aula, Long> {
 
     @Query("select a from Aula a join fetch a.turma where a.id = :id")
     Optional<Aula> findByIdWithTurma(@Param("id") Long id);
+
+    @Query("select a from Aula a join fetch a.turma where a.date > :today or (a.date = :today and a.startTime > :now) order by a.date, a.startTime, a.id")
+    List<Aula> findUpcomingWithTurma(@Param("today") LocalDate today, @Param("now") LocalTime now, Pageable pageable);
 }
