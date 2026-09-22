@@ -77,6 +77,18 @@ delta() {
   awk -v current="$current" -v previous="$previous" 'BEGIN { printf "%.2f", current - previous }'
 }
 
+sonar_api_get() {
+  curl --fail --silent --show-error \
+    --retry 6 \
+    --retry-all-errors \
+    --retry-delay 3 \
+    --retry-max-time 90 \
+    --connect-timeout 20 \
+    --max-time 120 \
+    --header "Authorization: Bearer $SONAR_TOKEN" \
+    "$@"
+}
+
 analysis_metrics='{}'
 run_analysis() {
   local commit="$1"
@@ -117,9 +129,7 @@ run_analysis() {
   [[ -n "$task_id" ]] || { echo "ceTaskId ausente para $commit" >&2; return 1; }
 
   for _ in {1..60}; do
-    task_status="$(curl --fail --silent --show-error \
-      --header "Authorization: Bearer $SONAR_TOKEN" \
-      "$SONAR_HOST_URL/api/ce/task?id=$task_id")"
+    task_status="$(sonar_api_get "$SONAR_HOST_URL/api/ce/task?id=$task_id")"
     case "$(jq -r '.task.status' <<< "$task_status")" in
       SUCCESS)
         analysis_id="$(jq -r '.task.analysisId' <<< "$task_status")"
@@ -138,8 +148,7 @@ run_analysis() {
     return 1
   }
 
-  analysis_metrics="$(curl --fail --silent --show-error \
-    --header "Authorization: Bearer $SONAR_TOKEN" \
+  analysis_metrics="$(sonar_api_get \
     --get "$SONAR_HOST_URL/api/measures/component" \
     --data-urlencode "component=$project_key" \
     --data-urlencode "metricKeys=$metrics")"
