@@ -12,8 +12,12 @@ class ComparisonTest(unittest.TestCase):
         self.assertEqual(parse_selection("prompt-02, prompt-01, prompt-02", available), ["prompt-02", "prompt-01"])
 
     def test_all_uses_natural_order(self):
-        available = ["prompt-10", "prompt-2", "prompt-1"]
+        available = ["prompt-10", "prompt-2", "prompt-1", "codex/auxiliar", "resultado-10-prompts"]
         self.assertEqual(parse_selection("ALL", available), ["prompt-1", "prompt-2", "prompt-10"])
+
+    def test_all_includes_maintenance_prompt_branches(self):
+        available = ["manutencao-11-vencimento", "manutencao-19-conflito", "fix-01"]
+        self.assertEqual(parse_selection("ALL", available), ["manutencao-11-vencimento", "manutencao-19-conflito"])
 
     def test_project_key_is_safe_deterministic_and_collision_resistant(self):
         first = project_key("base", "feature/foo")

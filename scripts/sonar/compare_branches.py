@@ -26,6 +26,7 @@ METRICS = (
     "complexity", "cognitive_complexity", "ncloc", "tests", "test_success_density",
     "test_failures", "test_errors", "skipped_tests", "test_execution_time", "sqale_index",
 )
+EXPERIMENTAL_BRANCH = re.compile(r"^(?:prompt|manutencao)-\d+(?:-|$)", re.IGNORECASE)
 DISPLAY_METRICS = (
     ("bugs", "Bugs", False), ("vulnerabilities", "Vulnerabilidades", False),
     ("security_hotspots", "Hotspots", False), ("code_smells", "Code smells", False),
@@ -154,7 +155,7 @@ def natural_key(value: str) -> list[int | str]:
 
 
 def parse_selection(raw: str, available: list[str]) -> list[str]:
-    selected = sorted(available, key=natural_key) if raw.strip().upper() == "ALL" else [
+    selected = sorted((branch for branch in available if EXPERIMENTAL_BRANCH.match(branch)), key=natural_key) if raw.strip().upper() == "ALL" else [
         part.strip() for part in re.split(r"[,\n;]+", raw) if part.strip()
     ]
     selected = list(dict.fromkeys(selected))
