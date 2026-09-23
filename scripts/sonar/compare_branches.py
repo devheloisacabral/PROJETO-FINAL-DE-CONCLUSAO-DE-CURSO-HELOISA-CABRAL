@@ -24,6 +24,7 @@ METRICS = (
     "bugs", "vulnerabilities", "security_hotspots", "code_smells", "coverage",
     "line_coverage", "branch_coverage", "duplicated_lines_density", "duplicated_blocks",
     "complexity", "cognitive_complexity", "ncloc", "tests", "test_success_density",
+    "test_failures", "test_errors", "skipped_tests", "test_execution_time", "sqale_index",
 )
 DISPLAY_METRICS = (
     ("bugs", "Bugs", False), ("vulnerabilities", "Vulnerabilidades", False),
@@ -31,6 +32,9 @@ DISPLAY_METRICS = (
     ("coverage", "Cobertura (%)", True), ("branch_coverage", "Cobertura branches (%)", True),
     ("duplicated_lines_density", "Duplicação (%)", False), ("complexity", "Complexidade", False),
     ("cognitive_complexity", "Complexidade cognitiva", False), ("ncloc", "Linhas", False),
+    ("sqale_index", "Débito técnico (min)", False), ("tests", "Testes", True),
+    ("test_failures", "Falhas de testes", False), ("test_errors", "Erros de testes", False),
+    ("skipped_tests", "Testes ignorados", False), ("test_success_density", "Sucesso dos testes (%)", True),
 )
 
 
@@ -96,18 +100,29 @@ class SonarClient:
         self.post("/api/project_branches/rename", project=key, name=main_branch)
         print(f"Projeto SonarCloud criado: {key}")
 
-    def wait_for_analysis(self, task_id: str) -> None:
+    def wait_for_analysis(self, task_id: str) -> dict[str, Any]:
         for _ in range(90):
             task = self.get("/api/ce/task", id=task_id).get("task", {})
             status = task.get("status")
             if status == "SUCCESS":
-                return
+                return task
             if status in ("FAILED", "CANCELED"):
                 raise ComparisonError(task.get("errorMessage", f"Análise SonarCloud {status}"))
             time.sleep(4)
         raise ComparisonError("A análise não terminou no prazo de 6 minutos.")
 
-    def snapshot(self, branch: str, project_key: str, commit: str) -> BranchSnapshot:
+    def official_analysis_date(self, project_key: str, task: dict[str, Any]) -> str:
+        """Obtém a data oficial da análise, sem depender do relógio do runner."""
+        for field in ("executedAt", "submittedAt"):
+            value = task.get(field)
+            if value:
+                return str(value)
+        analyses = self.get("/api/project_analyses/search", project=project_key, ps="1").get("analyses", [])
+        if analyses:
+            return str(analyses[0].get("date") or analyses[0].get("analysisDate") or "N/D")
+        return "N/D"
+
+    def snapshot(self, branch: str, project_key: str, commit: str, analysis_date: str) -> BranchSnapshot:
         payload = self.get("/api/measures/component", component=project_key, metricKeys=",".join(METRICS))
         values: dict[str, float | None] = {metric: None for metric in METRICS}
         for measure in payload.get("component", {}).get("measures", []):
@@ -117,7 +132,7 @@ class SonarClient:
                 continue
         gate = self.get("/api/qualitygates/project_status", projectKey=project_key)
         status = gate.get("projectStatus", {}).get("status", "NONE")
-        return BranchSnapshot(branch, project_key, commit, datetime.now(timezone.utc).isoformat(), status, values)
+        return BranchSnapshot(branch, project_key, commit, analysis_date, status, values)
 
 
 def run(*args: str, capture: bool = False, env: dict[str, str] | None = None) -> str:
@@ -145,8 +160,8 @@ def parse_selection(raw: str, available: list[str]) -> list[str]:
     selected = list(dict.fromkeys(selected))
     if not selected:
         raise ComparisonError("Informe ao menos uma branch.")
-    if len(selected) > 10:
-        raise ComparisonError(f"Foram selecionadas {len(selected)} branches; informe no máximo 10.")
+    if len(selected) > 20:
+        raise ComparisonError(f"Foram selecionadas {len(selected)} branches; informe no máximo 20.")
     missing = [name for name in selected if name not in available]
     if missing:
         raise ComparisonError("Branches inexistentes no Git remoto: " + ", ".join(missing))
@@ -166,8 +181,8 @@ def analyze_branch(client: SonarClient, branch: str, base_project: str, token: s
     run("git", "checkout", "--detach", "--force", commit)
     run("git", "clean", "-fdx", "--", "target")
     maven = ["bash", "./mvnw"] if Path("mvnw").is_file() else ["mvn"]
-    # Um checkout detached e a remoção das variáveis de detecção impedem que o scanner
-    # tente criar uma branch secundária. Cada project_key recebe somente sua branch principal.
+    # Cada branch experimental é um projeto SonarCloud independente. Não envie
+    # sonar.branch.name: a organização não permite análise de branches secundárias.
     scan_env = os.environ.copy()
     for name in ("GITHUB_REF", "GITHUB_REF_NAME", "GITHUB_HEAD_REF", "GITHUB_BASE_REF", "GITHUB_EVENT_NAME"):
         scan_env.pop(name, None)
@@ -175,7 +190,6 @@ def analyze_branch(client: SonarClient, branch: str, base_project: str, token: s
         "-B", "verify", "org.sonarsource.scanner.maven:sonar-maven-plugin:5.2.0.4988:sonar",
         f"-Dsonar.projectKey={key}", f"-Dsonar.organization={client.organization}",
         f"-Dsonar.host.url={client.host}", f"-Dsonar.token={token}",
-        f"-Dsonar.branch.name={branch}",
         f"-Dsonar.scm.revision={commit}", f"-Dsonar.projectVersion={commit[:12]}",
         "-Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml",
     ]
@@ -187,8 +201,8 @@ def analyze_branch(client: SonarClient, branch: str, base_project: str, token: s
     task_id = fields.get("ceTaskId")
     if not task_id:
         raise ComparisonError(f"ceTaskId ausente no relatório do scanner para {branch}.")
-    client.wait_for_analysis(task_id)
-    return client.snapshot(branch, key, commit)
+    task = client.wait_for_analysis(task_id)
+    return client.snapshot(branch, key, commit, client.official_analysis_date(key, task))
 
 
 def number(value: float | None) -> str:
@@ -236,7 +250,7 @@ def write_reports(snapshots: list[BranchSnapshot], baseline: BranchSnapshot | No
         row += [metric_cell(snapshot.measures[key], previous.measures[key] if previous else None, good) for key, _, good in DISPLAY_METRICS]
         lines.append("| " + " | ".join(row) + " |"); previous = snapshot
     lines += ["", f"Gerado em `{generated}`."]
-    (output / "impacto-branches.md").write_text("\n".join(lines) + "\n")
+    (output / "impacto-branches.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:

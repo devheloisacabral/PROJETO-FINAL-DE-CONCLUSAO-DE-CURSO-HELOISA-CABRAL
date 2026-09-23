@@ -18,8 +18,8 @@ Execuções posteriores reutilizam o mesmo projeto daquela branch, em vez de cri
 
 1. Faça o merge do workflow na branch padrão; o GitHub só exibe **Run workflow** para arquivos presentes nela.
 2. Abra `Actions > SonarCloud - comparar branches > Run workflow`.
-3. Em **branches**, informe de uma a dez branches na ordem do experimento, separadas por vírgula, ponto e vírgula ou quebra de linha. Exemplo: `prompt-01, prompt-02, prompt-03`.
-4. `ALL` inclui até dez referências remotas, em ordem natural. Se o repositório tiver outras branches, informe explicitamente apenas as dez experimentais.
+3. Em **branches**, informe de uma a vinte branches na ordem do experimento, separadas por vírgula, ponto e vírgula ou quebra de linha. Exemplo: `prompt-01, prompt-02, prompt-03`.
+4. `ALL` inclui até vinte referências remotas, em ordem natural. Se o repositório tiver outras branches, informe explicitamente apenas as branches experimentais.
 5. A **baseline branch** é opcional: ela também ganha um projeto, mas serve somente para calcular o primeiro delta.
 6. Escolha se um Quality Gate reprovado deve falhar o job.
 
@@ -33,7 +33,7 @@ O Summary contém uma tabela com uma linha por branch e links para os projetos i
 - `impacto-branches.csv`: métricas e deltas para Excel, LibreOffice, R ou Python;
 - `impacto-branches.json`: dados estruturados, commits e chaves dos projetos.
 
-A tabela apresenta bugs, vulnerabilidades, hotspots, code smells, cobertura, cobertura de branches, duplicação, complexidade, complexidade cognitiva e linhas de código. O CSV também contém cobertura de linhas, blocos duplicados e métricas de testes. Valores ausentes aparecem como `N/D`, nunca como zero.
+A tabela apresenta bugs, vulnerabilidades, hotspots, code smells, cobertura, cobertura de branches, duplicação, complexidade, complexidade cognitiva, linhas de código, débito técnico e métricas detalhadas de testes. O CSV também contém cobertura de linhas, blocos duplicados, falhas, erros, testes ignorados, tempo de execução e sucesso dos testes. A data registrada é a data oficial retornada pelo SonarCloud; valores ausentes aparecem como `N/D`, nunca como zero.
 
 O delta é `branch atual - branch anterior`. Cobertura maior é marcada como melhora; para defeitos, duplicação e complexidade, valores menores são marcados como melhora. A cor é somente um auxílio visual e não prova causalidade.
 

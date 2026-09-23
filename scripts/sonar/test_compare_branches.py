@@ -36,12 +36,16 @@ class ComparisonTest(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as directory:
             write_reports(snapshots, None, Path(directory), "base", "https://sonarcloud.io")
-            markdown = (Path(directory) / "impacto-branches.md").read_text()
+            markdown = (Path(directory) / "impacto-branches.md").read_text(encoding="utf-8")
             payload = json.loads((Path(directory) / "impacto-branches.json").read_text())
             self.assertIn("80 (🟢 +10.00)", markdown)
             self.assertIn("1 (🟢 -1.00)", markdown)
             self.assertIn("project-02", markdown)
             self.assertEqual(payload["branches"][1]["project_key"], "project-02")
+
+    def test_collects_debt_and_test_detail_metrics(self):
+        for metric in ("sqale_index", "test_failures", "test_errors", "skipped_tests", "test_execution_time"):
+            self.assertIn(metric, METRICS)
 
 
 if __name__ == "__main__":
