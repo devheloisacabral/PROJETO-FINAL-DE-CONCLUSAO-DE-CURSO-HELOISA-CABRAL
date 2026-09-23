@@ -9,7 +9,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
 
 @RestController
@@ -35,16 +34,8 @@ public class AulaController {
         return service.findOne(id, role(authentication), userId(authentication));
     }
 
-    @PatchMapping("/{id}/reagendar")
-    public AulaService.AulaResult reschedule(@PathVariable Long id, @Valid @RequestBody RescheduleRequest request,
-                                             Authentication authentication) {
-        return service.reschedule(id, request.data(), request.horarioInicio(), request.horarioFim(), role(authentication));
-    }
-
     private UserRole role(Authentication authentication) { return UserRole.valueOf(authentication.getAuthorities().iterator().next().getAuthority().substring(5)); }
     private Long userId(Authentication authentication) { return Long.valueOf(authentication.getName()); }
 
     public record AulaRequest(@NotNull Long turmaId, @NotNull LocalDate data) {}
-    public record RescheduleRequest(@NotNull LocalDate data, @NotNull LocalTime horarioInicio,
-                                    @NotNull LocalTime horarioFim) {}
 }

@@ -69,12 +69,6 @@ public class AuthenticationExceptionHandler {
     @ExceptionHandler(AulaService.InvalidAulaException.class)
     public ResponseEntity<Map<String, String>> invalidAula() { return ResponseEntity.badRequest().body(Map.of("error", "invalid_aula")); }
 
-    @ExceptionHandler(AulaService.RescheduleNotAllowedException.class)
-    public ResponseEntity<Map<String, String>> rescheduleNotAllowed() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "lesson_cannot_be_rescheduled")); }
-
-    @ExceptionHandler(AulaService.LessonConflictException.class)
-    public ResponseEntity<Map<String, String>> lessonConflict() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "lesson_schedule_conflict")); }
-
     @ExceptionHandler(PresencaService.InactiveStudentException.class)
     public ResponseEntity<Map<String, String>> inactiveStudent() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "inactive_student")); }
 
