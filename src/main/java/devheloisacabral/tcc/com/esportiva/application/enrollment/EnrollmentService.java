@@ -64,6 +64,9 @@ public class EnrollmentService {
             }
             throw new InvalidEnrollmentException();
         }
+        if (enrollments.existsActiveScheduleConflict(studentId, turma.getWeekday(), turma.getStartTime(), turma.getEndTime(), null)) {
+            throw new InvalidEnrollmentException();
+        }
         return result(enrollments.save(new Enrollment(student, turma, LocalDateTime.now())));
     }
 
@@ -83,6 +86,7 @@ public class EnrollmentService {
             Long studentId = entry.getStudent().getId();
             if (!"ativo".equals(entry.getStudent().getStatus())
                     || enrollments.existsByStudentIdAndTurmaIdAndStatus(studentId, turma.getId(), "ativa")
+                    || enrollments.existsActiveScheduleConflict(studentId, turma.getWeekday(), turma.getStartTime(), turma.getEndTime(), null)
                     || fees.existsByStudentIdAndStatusAndDueDateBefore(studentId, "pendente", LocalDate.now())) {
                 continue;
             }
@@ -102,6 +106,10 @@ public class EnrollmentService {
         Turma destination = turmas.findByIdForEnrollment(destinationTurmaId).orElseThrow(NotFoundException::new);
         if (!"ativa".equals(destination.getStatus())) throw new InvalidEnrollmentException();
         if (enrollments.existsByStudentIdAndTurmaIdAndStatus(origin.getStudent().getId(), destinationTurmaId, "ativa")) {
+            throw new InvalidEnrollmentException();
+        }
+        if (enrollments.existsActiveScheduleConflict(origin.getStudent().getId(), destination.getWeekday(),
+                destination.getStartTime(), destination.getEndTime(), origin.getTurma().getId())) {
             throw new InvalidEnrollmentException();
         }
         if (enrollments.countByTurmaIdAndStatus(destinationTurmaId, "ativa") >= destination.getMaxCapacity()) {

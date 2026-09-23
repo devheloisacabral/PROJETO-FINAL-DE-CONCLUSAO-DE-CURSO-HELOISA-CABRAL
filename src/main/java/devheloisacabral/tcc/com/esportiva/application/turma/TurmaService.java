@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class TurmaService {
@@ -31,6 +32,7 @@ public class TurmaService {
                               List<Long> responsibleProfessorIds, UserRole role) {
         requireAdmin(role);
         Selection selection = validate(name, weekday, startTime, endTime, maxCapacity, status, professorIds, responsibleProfessorIds);
+        validateSchedule(status, null, weekday.trim(), startTime, endTime, professorIds);
         return result(turmas.save(new Turma(name.trim(), weekday.trim(), startTime, endTime, maxCapacity,
                 status, selection.professors(), selection.responsible())));
     }
@@ -62,6 +64,7 @@ public class TurmaService {
         requireAdmin(role);
         Turma turma = turmas.findById(id).orElseThrow(NotFoundException::new);
         Selection selection = validate(name, weekday, startTime, endTime, maxCapacity, status, professorIds, responsibleProfessorIds);
+        validateSchedule(status, id, weekday.trim(), startTime, endTime, professorIds);
         turma.update(name.trim(), weekday.trim(), startTime, endTime, maxCapacity, status, selection.professors(), selection.responsible());
         return result(turma);
     }
@@ -80,7 +83,22 @@ public class TurmaService {
     private void changeStatus(Long id, UserRole role, boolean active) {
         requireAdmin(role);
         Turma turma = turmas.findById(id).orElseThrow(NotFoundException::new);
-        if (active) turma.reactivate(); else turma.inactivate();
+        if (active) {
+            validateSchedule("ativa", id, turma.getWeekday(), turma.getStartTime(), turma.getEndTime(),
+                    turma.getProfessors().stream().map(Professor::getId).collect(Collectors.toList()));
+            turma.reactivate();
+        } else turma.inactivate();
+    }
+
+    private void validateSchedule(String status, Long excludedTurmaId, String weekday, LocalTime startTime,
+                                  LocalTime endTime, List<Long> professorIds) {
+        if ("ativa".equals(status) && turmas.existsActiveScheduleConflict(weekday, startTime, endTime, professorIds, excludedTurmaId)) {
+            throw new InvalidTurmaException();
+        }
+        if ("ativa".equals(status) && excludedTurmaId != null
+                && turmas.existsActiveEnrollmentScheduleConflict(excludedTurmaId, weekday, startTime, endTime)) {
+            throw new InvalidTurmaException();
+        }
     }
 
     private Selection validate(String name, String weekday, LocalTime startTime, LocalTime endTime,
