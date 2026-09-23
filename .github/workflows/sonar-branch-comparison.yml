@@ -44,6 +44,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configurar Java 21 e cache Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
