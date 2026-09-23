@@ -26,9 +26,8 @@ public class EnrollmentController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public EnrollmentService.EnrollmentResult create(@Valid @RequestBody EnrollmentRequest request,
-                                                     Authentication authentication) {
-        return service.create(request.studentId(), request.turmaId(), role(authentication));
+    public Object create(@Valid @RequestBody EnrollmentRequest request, Authentication authentication) {
+        return service.createOrWaitlist(request.studentId(), request.turmaId(), request.aceitarListaEspera(), role(authentication));
     }
 
     @GetMapping
@@ -52,6 +51,6 @@ public class EnrollmentController {
         return UserRole.valueOf(authentication.getAuthorities().iterator().next().getAuthority().substring(5));
     }
 
-    public record EnrollmentRequest(@NotNull Long studentId, @NotNull Long turmaId) {}
+    public record EnrollmentRequest(@NotNull Long studentId, @NotNull Long turmaId, boolean aceitarListaEspera) {}
     public record TransferRequest(@NotNull Long turmaId) {}
 }

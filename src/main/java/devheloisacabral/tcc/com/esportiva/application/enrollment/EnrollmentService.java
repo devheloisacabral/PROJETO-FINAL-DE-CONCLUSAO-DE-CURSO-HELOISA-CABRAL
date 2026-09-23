@@ -3,9 +3,11 @@ package devheloisacabral.tcc.com.esportiva.application.enrollment;
 import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
 import devheloisacabral.tcc.com.esportiva.domain.enrollment.Enrollment;
+import devheloisacabral.tcc.com.esportiva.domain.enrollment.WaitlistEntry;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.enrollment.EnrollmentRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.enrollment.WaitlistRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.turma.TurmaRepository;
 import org.springframework.security.access.AccessDeniedException;
@@ -22,17 +24,24 @@ public class EnrollmentService {
     private final AuthUserRepository users;
     private final MonthlyFeeRepository fees;
     private final TurmaRepository turmas;
+    private final WaitlistRepository waitlist;
 
     public EnrollmentService(EnrollmentRepository enrollments, AuthUserRepository users,
-                             MonthlyFeeRepository fees, TurmaRepository turmas) {
+                             MonthlyFeeRepository fees, TurmaRepository turmas, WaitlistRepository waitlist) {
         this.enrollments = enrollments;
         this.users = users;
         this.fees = fees;
         this.turmas = turmas;
+        this.waitlist = waitlist;
     }
 
     @Transactional
     public EnrollmentResult create(Long studentId, Long turmaId, UserRole role) {
+        return (EnrollmentResult) createOrWaitlist(studentId, turmaId, false, role);
+    }
+
+    @Transactional
+    public Object createOrWaitlist(Long studentId, Long turmaId, boolean acceptWaitlist, UserRole role) {
         requireAdmin(role);
         AuthUser student = users.findByIdAndRole(studentId, UserRole.ALUNO).orElseThrow(NotFoundException::new);
         Turma turma = turmas.findByIdForEnrollment(turmaId).orElseThrow(NotFoundException::new);
@@ -46,6 +55,13 @@ public class EnrollmentService {
             throw new InvalidEnrollmentException();
         }
         if (enrollments.countByTurmaIdAndStatus(turmaId, "ativa") >= turma.getMaxCapacity()) {
+            if (acceptWaitlist) {
+                if (waitlist.existsByStudentIdAndTurmaIdAndStatus(studentId, turmaId, "ativa")) {
+                    throw new InvalidEnrollmentException();
+                }
+                WaitlistEntry entry = waitlist.save(new WaitlistEntry(student, turma, LocalDateTime.now()));
+                return new WaitlistResult(entry.getId(), student.getId(), turma.getId(), entry.getRequestedAt(), entry.getStatus());
+            }
             throw new InvalidEnrollmentException();
         }
         return result(enrollments.save(new Enrollment(student, turma, LocalDateTime.now())));
@@ -56,8 +72,25 @@ public class EnrollmentService {
         requireAdmin(role);
         Enrollment enrollment = enrollments.findById(id).orElseThrow(NotFoundException::new);
         if (!"ativa".equals(enrollment.getStatus())) throw new InvalidEnrollmentException();
+        Turma turma = turmas.findByIdForEnrollment(enrollment.getTurma().getId()).orElse(enrollment.getTurma());
         enrollment.cancel();
+        promoteFirstEligible(turma);
         return result(enrollment);
+    }
+
+    private void promoteFirstEligible(Turma turma) {
+        for (WaitlistEntry entry : waitlist.findByTurmaIdAndStatusOrderByRequestedAtAscIdAsc(turma.getId(), "ativa")) {
+            Long studentId = entry.getStudent().getId();
+            if (!"ativo".equals(entry.getStudent().getStatus())
+                    || enrollments.existsByStudentIdAndTurmaIdAndStatus(studentId, turma.getId(), "ativa")
+                    || fees.existsByStudentIdAndStatusAndDueDateBefore(studentId, "pendente", LocalDate.now())) {
+                continue;
+            }
+            enrollments.save(new Enrollment(entry.getStudent(), turma, LocalDateTime.now()));
+            entry.promote();
+            waitlist.save(entry);
+            return;
+        }
     }
 
     @Transactional
@@ -100,6 +133,7 @@ public class EnrollmentService {
 
     public record EnrollmentResult(Long id, StudentResult aluno, TurmaResult turma, LocalDateTime enrolledAt, String status) {}
     public record TransferResult(EnrollmentResult origem, EnrollmentResult destino) {}
+    public record WaitlistResult(Long id, Long alunoId, Long turmaId, LocalDateTime requestedAt, String status) {}
     public record StudentResult(Long id, String name, String email, String status) {}
     public record TurmaResult(Long id, String name, String status) {}
     public static class InvalidEnrollmentException extends RuntimeException {}
