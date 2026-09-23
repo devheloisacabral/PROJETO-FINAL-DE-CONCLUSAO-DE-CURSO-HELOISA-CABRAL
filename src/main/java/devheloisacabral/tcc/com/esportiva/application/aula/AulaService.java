@@ -4,7 +4,6 @@ import devheloisacabral.tcc.com.esportiva.domain.aula.Aula;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.aula.AulaRepository;
-import devheloisacabral.tcc.com.esportiva.persistence.presenca.PresencaRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.turma.TurmaRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -20,12 +19,10 @@ import java.util.Locale;
 public class AulaService {
     private final AulaRepository aulas;
     private final TurmaRepository turmas;
-    private final PresencaRepository presencas;
 
-    public AulaService(AulaRepository aulas, TurmaRepository turmas, PresencaRepository presencas) {
+    public AulaService(AulaRepository aulas, TurmaRepository turmas) {
         this.aulas = aulas;
         this.turmas = turmas;
-        this.presencas = presencas;
     }
 
     @Transactional
@@ -40,23 +37,6 @@ public class AulaService {
             throw new WeekdayMismatchException();
         }
         return result(aulas.save(new Aula(turma, date, turma.getStartTime(), turma.getEndTime())));
-    }
-
-    @Transactional
-    public AulaResult reschedule(Long id, LocalDate date, LocalTime startTime, LocalTime endTime, UserRole role) {
-        requireAdmin(role);
-        if (id == null || date == null || startTime == null || endTime == null || !startTime.isBefore(endTime)
-                || date.isBefore(LocalDate.now())) {
-            throw new InvalidAulaException("invalid rescheduled lesson data");
-        }
-        Aula aula = aulas.findByIdWithTurma(id).orElseThrow(NotFoundException::new);
-        if (aula.isCancelled()) throw new RescheduleNotAllowedException();
-        if (presencas.countByAulaId(id) > 0) throw new RescheduleNotAllowedException();
-        if (aulas.existsActiveConflict(aula.getTurma().getId(), id, date, startTime, endTime)) {
-            throw new LessonConflictException();
-        }
-        aula.reschedule(date, startTime, endTime);
-        return result(aulas.save(aula));
     }
 
     @Transactional(readOnly = true)
@@ -100,7 +80,5 @@ public class AulaService {
     public record TurmaResult(Long id, String name) {}
     public static class InvalidAulaException extends RuntimeException { public InvalidAulaException(String message) { super(message); } }
     public static class WeekdayMismatchException extends RuntimeException {}
-    public static class RescheduleNotAllowedException extends RuntimeException {}
-    public static class LessonConflictException extends RuntimeException {}
     public static class NotFoundException extends RuntimeException {}
 }
