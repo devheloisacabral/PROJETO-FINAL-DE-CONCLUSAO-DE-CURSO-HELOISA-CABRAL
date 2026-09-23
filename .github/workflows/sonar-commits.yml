@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 120
     env:
       SONAR_HOST_URL: https://sonarcloud.io
+      SONAR_ORGANIZATION: devheloisacabral
       SONAR_PROJECT_KEY: devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SELECTED_BRANCHES: ${{ inputs.branches }}
