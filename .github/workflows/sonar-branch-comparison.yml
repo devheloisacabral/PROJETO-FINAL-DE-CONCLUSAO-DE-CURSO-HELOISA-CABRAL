@@ -29,9 +29,10 @@ jobs:
   compare:
     name: Gerar tabela comparativa
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       SONAR_HOST_URL: https://sonarcloud.io
+      SONAR_ORGANIZATION: devheloisacabral
       SONAR_PROJECT_KEY: devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SELECTED_BRANCHES: ${{ inputs.branches }}
@@ -40,6 +41,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Java 21 e cache Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
 
       - name: Configurar Python
         uses: actions/setup-python@v5
