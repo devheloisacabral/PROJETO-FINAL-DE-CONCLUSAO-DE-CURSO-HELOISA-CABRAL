@@ -41,9 +41,17 @@ public class EnrollmentController {
         return service.cancel(id, role(authentication));
     }
 
+    @PatchMapping("/{id}/transferir")
+    public EnrollmentService.TransferResult transfer(@PathVariable Long id,
+                                                     @Valid @RequestBody TransferRequest request,
+                                                     Authentication authentication) {
+        return service.transfer(id, request.turmaId(), role(authentication));
+    }
+
     private UserRole role(Authentication authentication) {
         return UserRole.valueOf(authentication.getAuthorities().iterator().next().getAuthority().substring(5));
     }
 
     public record EnrollmentRequest(@NotNull Long studentId, @NotNull Long turmaId) {}
+    public record TransferRequest(@NotNull Long turmaId) {}
 }

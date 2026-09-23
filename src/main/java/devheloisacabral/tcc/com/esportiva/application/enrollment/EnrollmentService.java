@@ -60,6 +60,25 @@ public class EnrollmentService {
         return result(enrollment);
     }
 
+    @Transactional
+    public TransferResult transfer(Long enrollmentId, Long destinationTurmaId, UserRole role) {
+        requireAdmin(role);
+        Enrollment origin = enrollments.findById(enrollmentId).orElseThrow(NotFoundException::new);
+        if (!"ativa".equals(origin.getStatus())) throw new InvalidEnrollmentException();
+        if (origin.getTurma().getId().equals(destinationTurmaId)) throw new InvalidEnrollmentException();
+        Turma destination = turmas.findByIdForEnrollment(destinationTurmaId).orElseThrow(NotFoundException::new);
+        if (!"ativa".equals(destination.getStatus())) throw new InvalidEnrollmentException();
+        if (enrollments.existsByStudentIdAndTurmaIdAndStatus(origin.getStudent().getId(), destinationTurmaId, "ativa")) {
+            throw new InvalidEnrollmentException();
+        }
+        if (enrollments.countByTurmaIdAndStatus(destinationTurmaId, "ativa") >= destination.getMaxCapacity()) {
+            throw new InvalidEnrollmentException();
+        }
+        origin.cancel();
+        Enrollment target = enrollments.save(new Enrollment(origin.getStudent(), destination, LocalDateTime.now()));
+        return new TransferResult(result(origin), result(target));
+    }
+
     @Transactional(readOnly = true)
     public List<EnrollmentResult> findAll(UserRole role, Long authenticatedUserId) {
         if (role == UserRole.ADMIN) return enrollments.findAllWithStudentAndTurma().stream().map(this::result).toList();
@@ -80,6 +99,7 @@ public class EnrollmentService {
     }
 
     public record EnrollmentResult(Long id, StudentResult aluno, TurmaResult turma, LocalDateTime enrolledAt, String status) {}
+    public record TransferResult(EnrollmentResult origem, EnrollmentResult destino) {}
     public record StudentResult(Long id, String name, String email, String status) {}
     public record TurmaResult(Long id, String name, String status) {}
     public static class InvalidEnrollmentException extends RuntimeException {}
