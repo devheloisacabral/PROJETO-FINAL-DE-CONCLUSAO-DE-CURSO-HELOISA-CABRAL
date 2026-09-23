@@ -54,6 +54,28 @@ class TurmaServiceTest {
     }
 
     @Test
+    void blocksProfessorInOverlappingActiveTurma() {
+        when(professors.findAllById(List.of(10L))).thenReturn(List.of(professor));
+        when(turmas.existsActiveScheduleConflict("segunda-feira", LocalTime.of(9, 30), LocalTime.of(10, 30), List.of(10L), null))
+                .thenReturn(true);
+
+        assertThrows(TurmaService.InvalidTurmaException.class, () -> service.create("Vôlei", "segunda-feira",
+                LocalTime.of(9, 30), LocalTime.of(10, 30), 10, "ativa", List.of(10L), List.of(10L), UserRole.ADMIN));
+        verify(turmas, never()).save(any());
+    }
+
+    @Test
+    void allowsProfessorTurmasThatOnlyTouch() {
+        when(professors.findAllById(List.of(10L))).thenReturn(List.of(professor));
+        when(turmas.existsActiveScheduleConflict("segunda-feira", LocalTime.of(10, 0), LocalTime.of(11, 0), List.of(10L), null))
+                .thenReturn(false);
+        when(turmas.save(any(Turma.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertEquals("Vôlei", service.create("Vôlei", "segunda-feira", LocalTime.of(10, 0), LocalTime.of(11, 0),
+                10, "ativa", List.of(10L), List.of(10L), UserRole.ADMIN).name());
+    }
+
+    @Test
     void createsInactiveTurmaWithValidData() {
         when(professors.findAllById(List.of(10L))).thenReturn(List.of(professor));
         when(turmas.save(any(Turma.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -100,6 +122,20 @@ class TurmaServiceTest {
         assertThrows(AccessDeniedException.class, () -> service.update(1L, "x", "segunda", LocalTime.NOON, LocalTime.of(13, 0), 1, "ativa", List.of(10L), List.of(10L), UserRole.ALUNO));
         assertThrows(AccessDeniedException.class, () -> service.delete(1L, UserRole.ALUNO));
         verify(turmas).delete(created);
+    }
+
+    @Test
+    void updatingTurmaBlocksWhenItsStudentsWouldOverlapAnotherActiveTurma() {
+        when(professors.findAllById(List.of(10L))).thenReturn(List.of(professor));
+        Turma created = new Turma("Vôlei", "segunda-feira", LocalTime.of(9, 0), LocalTime.of(10, 0), 10, "ativa",
+                new java.util.LinkedHashSet<>(List.of(professor)), professor);
+        when(turmas.findById(1L)).thenReturn(Optional.of(created));
+        when(turmas.existsActiveEnrollmentScheduleConflict(1L, "segunda-feira", LocalTime.of(9, 30), LocalTime.of(10, 30)))
+                .thenReturn(true);
+
+        assertThrows(TurmaService.InvalidTurmaException.class, () -> service.update(1L, "Vôlei", "segunda-feira",
+                LocalTime.of(9, 30), LocalTime.of(10, 30), 10, "ativa", List.of(10L), List.of(10L), UserRole.ADMIN));
+        assertEquals(LocalTime.of(9, 0), created.getStartTime());
     }
 
     @Test

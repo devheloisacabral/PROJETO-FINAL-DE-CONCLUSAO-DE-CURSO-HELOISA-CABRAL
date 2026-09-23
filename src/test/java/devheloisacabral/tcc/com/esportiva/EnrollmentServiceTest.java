@@ -160,6 +160,18 @@ class EnrollmentServiceTest {
     }
 
     @Test
+    void blocksStudentInOverlappingActiveTurma() {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
+        when(enrollments.existsActiveScheduleConflict(20L, activeTurma.getWeekday(), activeTurma.getStartTime(), activeTurma.getEndTime(), null))
+                .thenReturn(true);
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class, () -> service.create(20L, 30L, UserRole.ADMIN));
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test
     void adminQueriesAllEnrollmentsAndAlunoQueriesOnlyOwnEnrollments() {
         when(enrollments.findAllWithStudentAndTurma()).thenReturn(List.of());
         when(enrollments.findAllWithStudentAndTurmaByStudentId(20L)).thenReturn(List.of());
@@ -199,6 +211,8 @@ class EnrollmentServiceTest {
         when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
         when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
         when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 30L, "ativa")).thenReturn(false);
+        when(enrollments.existsActiveScheduleConflict(20L, activeTurma.getWeekday(), activeTurma.getStartTime(), activeTurma.getEndTime(), null))
+                .thenReturn(false);
         when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(0L);
         when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
