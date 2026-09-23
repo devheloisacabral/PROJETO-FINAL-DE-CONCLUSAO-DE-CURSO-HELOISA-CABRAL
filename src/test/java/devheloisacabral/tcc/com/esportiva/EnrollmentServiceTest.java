@@ -34,6 +34,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -210,6 +211,82 @@ class EnrollmentServiceTest {
 
         assertThrows(EnrollmentService.InvalidEnrollmentException.class,
                 () -> service.create(20L, 30L, UserRole.ADMIN));
+        verify(enrollments, never()).save(any());
+        verify(enrollments, never()).countByTurmaIdAndStatus(anyLong(), anyString());
+    }
+
+    @Test
+    void adminTransfersActiveEnrollmentToAvailableTurma() throws Exception {
+        Turma destination = turma(31L, "Basquete", "ativa", 2);
+        Enrollment origin = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        setId(origin, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(origin));
+        when(turmas.findByIdForEnrollment(31L)).thenReturn(Optional.of(destination));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 31L, "ativa")).thenReturn(false);
+        when(enrollments.countByTurmaIdAndStatus(31L, "ativa")).thenReturn(0L);
+        when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = service.transfer(80L, 31L, UserRole.ADMIN);
+
+        assertEquals("cancelada", result.origem().status());
+        assertEquals("ativa", result.destino().status());
+        assertEquals(31L, result.destino().turma().id());
+        verify(enrollments).save(any(Enrollment.class));
+    }
+
+    @Test
+    void fullDestinationBlocksTransferAndKeepsOriginActive() throws Exception {
+        Turma destination = turma(31L, "Basquete", "ativa", 1);
+        Enrollment origin = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        setId(origin, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(origin));
+        when(turmas.findByIdForEnrollment(31L)).thenReturn(Optional.of(destination));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 31L, "ativa")).thenReturn(false);
+        when(enrollments.countByTurmaIdAndStatus(31L, "ativa")).thenReturn(1L);
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.transfer(80L, 31L, UserRole.ADMIN));
+        assertEquals("ativa", origin.getStatus());
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test
+    void cancelledOriginBlocksTransfer() throws Exception {
+        Enrollment origin = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        origin.cancel();
+        setId(origin, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(origin));
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.transfer(80L, 31L, UserRole.ADMIN));
+        verifyNoInteractions(turmas);
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test
+    void transferToSameTurmaIsBlocked() throws Exception {
+        Enrollment origin = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        setId(origin, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(origin));
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.transfer(80L, 30L, UserRole.ADMIN));
+        verifyNoInteractions(turmas);
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test
+    void activeDestinationDuplicateBlocksTransferAndKeepsOriginActive() throws Exception {
+        Turma destination = turma(31L, "Basquete", "ativa", 2);
+        Enrollment origin = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        setId(origin, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(origin));
+        when(turmas.findByIdForEnrollment(31L)).thenReturn(Optional.of(destination));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 31L, "ativa")).thenReturn(true);
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.transfer(80L, 31L, UserRole.ADMIN));
+        assertEquals("ativa", origin.getStatus());
         verify(enrollments, never()).save(any());
         verify(enrollments, never()).countByTurmaIdAndStatus(anyLong(), anyString());
     }
