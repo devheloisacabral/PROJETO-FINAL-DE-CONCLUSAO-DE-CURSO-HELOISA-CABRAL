@@ -1,6 +1,6 @@
 # Comparação das branches no SonarCloud
 
-O workflow **SonarCloud - comparar branches** cria um projeto SonarCloud independente para cada branch experimental, analisa cada checkout como a branch principal desse projeto e compara os resultados na ordem informada. Isso funciona em organizações que não oferecem análise de branches secundárias.
+O workflow **SonarCloud - comparar branches** analisa cada checkout experimental, em ordem cronológica, no projeto SonarCloud principal. Cada execução recebe o commit como `sonar.projectVersion`, e o script coleta o snapshot logo após o processamento. Assim o histórico permanece rastreável sem consumir a cota de linhas criando um projeto independente para cada branch.
 
 ## Pré-requisitos
 
@@ -12,7 +12,7 @@ O workflow usa a chave original como prefixo e gera uma chave determinística pa
 devheloisacabral_PROJETO-FINAL-DE-CONCLUSAO-DE-CURSO-ESPORTIVA-PLUS__experiment__prompt-01-a1b2c3d4
 ```
 
-Execuções posteriores reutilizam o mesmo projeto daquela branch, em vez de criar duplicatas. O hash evita colisões entre nomes de branch que gerariam o mesmo identificador normalizado.
+O projeto principal é reutilizado em todas as análises. Projetos experimentais criados por versões anteriores do script não são removidos automaticamente, pois a remoção exige uma decisão explícita após a exportação dos relatórios.
 
 ## Como executar
 
@@ -23,7 +23,7 @@ Execuções posteriores reutilizam o mesmo projeto daquela branch, em vez de cri
 5. A **baseline branch** é opcional: ela também ganha um projeto, mas serve somente para calcular o primeiro delta.
 6. Escolha se um Quality Gate reprovado deve falhar o job.
 
-Para cada branch, o workflow faz checkout detached, executa `mvn verify`, gera o relatório JaCoCo, executa o SonarScanner, aguarda o processamento no SonarCloud e só então coleta as métricas. Nenhuma análise usa o recurso de branch secundária do SonarCloud.
+Para cada branch, o workflow faz checkout detached, executa `mvn verify`, gera o relatório JaCoCo, executa o SonarScanner no projeto principal, aguarda o processamento no SonarCloud e só então coleta as métricas. Nenhuma análise usa o recurso de branch secundária do SonarCloud.
 
 ## Resultados
 

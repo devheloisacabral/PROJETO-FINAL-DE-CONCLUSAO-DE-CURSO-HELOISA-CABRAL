@@ -25,6 +25,11 @@ class ComparisonTest(unittest.TestCase):
         self.assertRegex(first, r"^base__experiment__feature-foo-[0-9a-f]{8}$")
         self.assertNotEqual(first, project_key("base", "feature-foo"))
 
+    def test_all_snapshots_can_share_the_main_project(self):
+        first = BranchSnapshot("prompt-01", "base", "a" * 40, "2026-01-01", "OK", {})
+        second = BranchSnapshot("prompt-02", "base", "b" * 40, "2026-01-02", "OK", {})
+        self.assertEqual(first.project_key, second.project_key)
+
     def test_metric_cell_marks_direction(self):
         self.assertIn("🟢", metric_cell(85, 80, True))
         self.assertIn("🔴", metric_cell(4, 2, False))

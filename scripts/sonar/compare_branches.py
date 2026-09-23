@@ -177,8 +177,10 @@ def project_key(base: str, branch: str) -> str:
 
 def analyze_branch(client: SonarClient, branch: str, base_project: str, token: str) -> BranchSnapshot:
     commit = run("git", "rev-parse", f"refs/remotes/origin/{branch}^{{commit}}", capture=True)
-    key = project_key(base_project, branch)
-    client.ensure_project(key, f"{base_project} — experimento — {branch}", branch)
+    # Todas as referências são analisadas sequencialmente no projeto principal.
+    # Assim o SonarCloud mantém o histórico das análises sem consumir a cota de
+    # LOC criando um projeto independente para cada branch.
+    key = base_project
     run("git", "checkout", "--detach", "--force", commit)
     run("git", "clean", "-fdx", "--", "target")
     maven = ["bash", "./mvnw"] if Path("mvnw").is_file() else ["mvn"]
@@ -269,6 +271,7 @@ def main() -> int:
         if baseline_name in selected:
             raise ComparisonError("A baseline não deve ser repetida na lista de branches.")
         client = SonarClient(host, token, organization)
+        client.ensure_project(base, base, "main")
         baseline = analyze_branch(client, baseline_name, base, token) if baseline_name else None
         snapshots = [analyze_branch(client, branch, base, token) for branch in selected]
         write_reports(snapshots, baseline, Path(os.getenv("REPORTS_DIR", "sonar/reports")), base, host)
