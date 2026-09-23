@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface PresencaRepository extends JpaRepository<Presenca, Long> {
+    long countByAulaId(Long aulaId);
+
     @Query("select p from Presenca p join fetch p.student join fetch p.aula a join fetch a.turma order by p.id")
     List<Presenca> findAllWithDetails();
 

@@ -45,4 +45,10 @@ public class Aula {
     public LocalTime getStartTime() { return startTime; }
     public LocalTime getEndTime() { return endTime; }
     public boolean isCancelled() { return cancelled; }
+
+    public void reschedule(LocalDate date, LocalTime startTime, LocalTime endTime) {
+        this.date = date;
+        this.startTime = startTime;
+        this.endTime = endTime;
+    }
 }

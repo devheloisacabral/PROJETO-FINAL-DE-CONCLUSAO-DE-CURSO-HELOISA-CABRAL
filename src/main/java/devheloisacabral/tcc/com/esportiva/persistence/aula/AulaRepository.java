@@ -26,4 +26,10 @@ public interface AulaRepository extends JpaRepository<Aula, Long> {
 
     @Query("select a from Aula a join fetch a.turma where a.date > :today or (a.date = :today and a.startTime > :now) order by a.date, a.startTime, a.id")
     List<Aula> findUpcomingWithTurma(@Param("today") LocalDate today, @Param("now") LocalTime now, Pageable pageable);
+
+    @Query("select count(a) > 0 from Aula a where a.turma.id = :turmaId and a.id <> :aulaId and a.cancelled = false " +
+            "and a.date = :date and a.startTime < :endTime and a.endTime > :startTime")
+    boolean existsActiveConflict(@Param("turmaId") Long turmaId, @Param("aulaId") Long aulaId,
+                                 @Param("date") LocalDate date, @Param("startTime") LocalTime startTime,
+                                 @Param("endTime") LocalTime endTime);
 }
