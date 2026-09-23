@@ -72,6 +72,9 @@ public class AuthenticationExceptionHandler {
     @ExceptionHandler(PresencaService.InactiveStudentException.class)
     public ResponseEntity<Map<String, String>> inactiveStudent() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "inactive_student")); }
 
+    @ExceptionHandler(PresencaService.NotEnrolledException.class)
+    public ResponseEntity<Map<String, String>> notEnrolled() { return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "student_not_enrolled")); }
+
     @ExceptionHandler(PresencaService.NotFoundException.class)
     public ResponseEntity<Map<String, String>> presencaNotFound() { return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "resource_not_found")); }
 

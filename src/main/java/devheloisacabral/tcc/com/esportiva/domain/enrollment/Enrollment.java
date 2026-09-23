@@ -32,16 +32,22 @@ public class Enrollment {
     @Column(name = "enrolled_at", nullable = false)
     private LocalDateTime enrolledAt;
 
+    @Column(nullable = false, length = 20)
+    private String status;
+
     protected Enrollment() {}
 
     public Enrollment(AuthUser student, Turma turma, LocalDateTime enrolledAt) {
         this.student = student;
         this.turma = turma;
         this.enrolledAt = enrolledAt;
+        this.status = "ativa";
     }
 
     public Long getId() { return id; }
     public AuthUser getStudent() { return student; }
     public Turma getTurma() { return turma; }
     public LocalDateTime getEnrolledAt() { return enrolledAt; }
+    public String getStatus() { return status; }
+    public void cancel() { status = "cancelada"; }
 }

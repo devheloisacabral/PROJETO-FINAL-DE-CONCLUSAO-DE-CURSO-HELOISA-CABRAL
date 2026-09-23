@@ -42,10 +42,22 @@ public class EnrollmentService {
         if (fees.existsByStudentIdAndStatusAndDueDateBefore(studentId, "pendente", LocalDate.now())) {
             throw new OverdueMonthlyFeeException();
         }
-        if (enrollments.countByTurmaId(turmaId) >= turma.getMaxCapacity()) {
+        if (enrollments.existsByStudentIdAndTurmaIdAndStatus(studentId, turmaId, "ativa")) {
+            throw new InvalidEnrollmentException();
+        }
+        if (enrollments.countByTurmaIdAndStatus(turmaId, "ativa") >= turma.getMaxCapacity()) {
             throw new InvalidEnrollmentException();
         }
         return result(enrollments.save(new Enrollment(student, turma, LocalDateTime.now())));
+    }
+
+    @Transactional
+    public EnrollmentResult cancel(Long id, UserRole role) {
+        requireAdmin(role);
+        Enrollment enrollment = enrollments.findById(id).orElseThrow(NotFoundException::new);
+        if (!"ativa".equals(enrollment.getStatus())) throw new InvalidEnrollmentException();
+        enrollment.cancel();
+        return result(enrollment);
     }
 
     @Transactional(readOnly = true)
@@ -60,14 +72,14 @@ public class EnrollmentService {
         Turma turma = enrollment.getTurma();
         return new EnrollmentResult(enrollment.getId(),
                 new StudentResult(student.getId(), student.getName(), student.getEmail(), student.getStatus()),
-                new TurmaResult(turma.getId(), turma.getName(), turma.getStatus()), enrollment.getEnrolledAt());
+                new TurmaResult(turma.getId(), turma.getName(), turma.getStatus()), enrollment.getEnrolledAt(), enrollment.getStatus());
     }
 
     private void requireAdmin(UserRole role) {
         if (role != UserRole.ADMIN) throw new AccessDeniedException("administrative operation is not authorized");
     }
 
-    public record EnrollmentResult(Long id, StudentResult aluno, TurmaResult turma, LocalDateTime enrolledAt) {}
+    public record EnrollmentResult(Long id, StudentResult aluno, TurmaResult turma, LocalDateTime enrolledAt, String status) {}
     public record StudentResult(Long id, String name, String email, String status) {}
     public record TurmaResult(Long id, String name, String status) {}
     public static class InvalidEnrollmentException extends RuntimeException {}

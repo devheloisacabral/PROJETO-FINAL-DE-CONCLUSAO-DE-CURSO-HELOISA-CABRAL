@@ -7,6 +7,8 @@ import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +34,11 @@ public class EnrollmentController {
     @GetMapping
     public List<EnrollmentService.EnrollmentResult> findAll(Authentication authentication) {
         return service.findAll(role(authentication), Long.valueOf(authentication.getName()));
+    }
+
+    @PatchMapping("/{id}/cancelar")
+    public EnrollmentService.EnrollmentResult cancel(@PathVariable Long id, Authentication authentication) {
+        return service.cancel(id, role(authentication));
     }
 
     private UserRole role(Authentication authentication) {

@@ -8,9 +8,11 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
-    long countByTurmaId(Long turmaId);
+    long countByTurmaIdAndStatus(Long turmaId, String status);
 
-    @Query("select count(e) from Enrollment e where e.student.role = devheloisacabral.tcc.com.esportiva.domain.auth.UserRole.ALUNO and e.student.status = 'ativo' and e.turma.status = 'ativa'")
+    boolean existsByStudentIdAndTurmaIdAndStatus(Long studentId, Long turmaId, String status);
+
+    @Query("select count(e) from Enrollment e where e.status = 'ativa' and e.student.role = devheloisacabral.tcc.com.esportiva.domain.auth.UserRole.ALUNO and e.student.status = 'ativo' and e.turma.status = 'ativa'")
     long countActiveEnrollments();
 
     @Query("select e from Enrollment e join fetch e.student join fetch e.turma order by e.id")
