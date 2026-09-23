@@ -6,11 +6,13 @@ import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
 import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFee;
 import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFeePayment;
+import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFeeRefund;
 import devheloisacabral.tcc.com.esportiva.domain.plan.Plan;
 import devheloisacabral.tcc.com.esportiva.domain.plan.PlanAssignment;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeePaymentRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRefundRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.plan.PlanAssignmentRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.plan.PlanRepository;
 import java.math.BigDecimal;
@@ -33,6 +35,7 @@ class PlanAndMonthlyFeeServiceTest {
     @Mock AuthUserRepository users;
     @Mock MonthlyFeeRepository fees;
     @Mock MonthlyFeePaymentRepository payments;
+    @Mock MonthlyFeeRefundRepository refunds;
     @Mock PlanAssignmentRepository assignments;
     @InjectMocks PlanService planService;
     @InjectMocks MonthlyFeeService feeService;
@@ -125,10 +128,15 @@ class PlanAndMonthlyFeeServiceTest {
         assertEquals(LocalDate.of(2026, 10, 10), fee.getDueDate());
     }
 
-    @Test void receivingActivatesStudentAndCancellingReturnsToPending() {
+    @Test void receivingActivatesStudentAndCancellingCreatesRefund() {
         AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
         MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("120.00"));
+        MonthlyFeePayment payment = new MonthlyFeePayment(fee, new BigDecimal("120.00"));
         when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(payments.findAllByMonthlyFeeId(1L)).thenReturn(List.of(), List.of(payment));
+        when(refunds.findAllByPaymentId(null)).thenReturn(List.of());
+        when(refunds.findAllByPaymentMonthlyFeeId(1L)).thenReturn(List.of(), List.of(new MonthlyFeeRefund(payment)));
+        when(refunds.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
         assertEquals("paga", feeService.receive(1L, UserRole.ADMIN).status());
         assertEquals("ativo", student.getStatus());
         assertEquals("pendente", feeService.cancel(1L, UserRole.ADMIN).status());
@@ -191,18 +199,107 @@ class PlanAndMonthlyFeeServiceTest {
         verify(payments, never()).saveAndFlush(any());
     }
 
-    @Test void cancellingOnePaymentRecalculatesFeeStatusAndTotal() {
+    @Test void refundingOnePaymentRecalculatesFeeStatusAndTotal() {
         AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
         MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
         MonthlyFeePayment cancelled = new MonthlyFeePayment(fee, new BigDecimal("80.00"));
         MonthlyFeePayment remaining = new MonthlyFeePayment(fee, new BigDecimal("120.00"));
+        fee.pay();
         when(payments.findById(1L)).thenReturn(Optional.of(cancelled));
         when(payments.findAllByMonthlyFeeId(null)).thenReturn(List.of(cancelled, remaining));
+        when(refunds.findAllByPaymentId(1L)).thenReturn(List.of());
+        when(refunds.findAllByPaymentMonthlyFeeId(null)).thenReturn(List.of(new MonthlyFeeRefund(cancelled)));
+        when(refunds.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
 
-        var result = feeService.cancelPayment(1L, UserRole.ADMIN);
+        var result = feeService.refundPayment(1L, UserRole.ADMIN);
 
         assertEquals("pendente", result.status());
-        assertEquals(new BigDecimal("120.00"), result.totalPaid());
-        assertEquals("cancelado", cancelled.getStatus());
+        assertEquals(new BigDecimal("200.00"), result.totalPaid());
+        assertEquals(new BigDecimal("80.00"), result.totalRefunded());
+        assertEquals(new BigDecimal("120.00"), result.netPaid());
+    }
+
+    @Test void refundingPaidPaymentKeepsHistoryAndReturnsFeeToPending() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment payment = new MonthlyFeePayment(fee, new BigDecimal("200.00"));
+        fee.pay();
+        student.activate();
+        when(payments.findById(1L)).thenReturn(Optional.of(payment));
+        when(refunds.findAllByPaymentId(1L)).thenReturn(List.of());
+        when(refunds.findAllByPaymentMonthlyFeeId(null)).thenReturn(List.of(new MonthlyFeeRefund(payment)));
+        when(refunds.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(payments.findAllByMonthlyFeeId(null)).thenReturn(List.of(payment));
+
+        var result = feeService.refundPayment(1L, UserRole.ADMIN);
+
+        assertEquals("pendente", result.status());
+        assertEquals(new BigDecimal("200.00"), result.totalPaid());
+        assertEquals(new BigDecimal("200.00"), result.totalRefunded());
+        assertEquals(new BigDecimal("0.00"), result.netPaid());
+        assertEquals("ativo", student.getStatus());
+        verify(refunds).saveAndFlush(any(MonthlyFeeRefund.class));
+    }
+
+    @Test void duplicateRefundIsRejectedWithoutCreatingAnotherRefund() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment payment = new MonthlyFeePayment(fee, new BigDecimal("200.00"));
+        when(payments.findById(1L)).thenReturn(Optional.of(payment));
+        when(refunds.findAllByPaymentId(1L)).thenReturn(List.of(new MonthlyFeeRefund(payment)));
+
+        assertThrows(MonthlyFeeService.RefundAlreadyExistsException.class,
+                () -> feeService.refundPayment(1L, UserRole.ADMIN));
+        verify(refunds, never()).saveAndFlush(any());
+    }
+
+    @Test void partialRefundRecalculatesNetPaidBalance() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment first = new MonthlyFeePayment(fee, new BigDecimal("100.00"));
+        MonthlyFeePayment second = new MonthlyFeePayment(fee, new BigDecimal("100.00"));
+        when(payments.findById(1L)).thenReturn(Optional.of(first));
+        when(refunds.findAllByPaymentId(1L)).thenReturn(List.of());
+        when(payments.findAllByMonthlyFeeId(null)).thenReturn(List.of(first, second));
+        when(refunds.findAllByPaymentMonthlyFeeId(null)).thenReturn(List.of(new MonthlyFeeRefund(first)));
+        when(refunds.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+
+        var result = feeService.refundPayment(1L, UserRole.ADMIN);
+
+        assertEquals("pendente", result.status());
+        assertEquals(new BigDecimal("200.00"), result.totalPaid());
+        assertEquals(new BigDecimal("100.00"), result.totalRefunded());
+        assertEquals(new BigDecimal("100.00"), result.netPaid());
+    }
+
+    @Test void financialDetailReportsPaymentsRefundsAndNetBalance() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment payment = new MonthlyFeePayment(fee, new BigDecimal("200.00"));
+        when(fees.findById(1L)).thenReturn(Optional.of(fee));
+        when(payments.findAllByMonthlyFeeId(1L)).thenReturn(List.of(payment));
+        when(refunds.findAllByPaymentMonthlyFeeId(1L)).thenReturn(List.of(new MonthlyFeeRefund(payment)));
+
+        var result = feeService.findOne(1L, 9L, UserRole.ADMIN);
+
+        assertEquals(new BigDecimal("200.00"), result.totalPaid());
+        assertEquals(new BigDecimal("200.00"), result.totalRefunded());
+        assertEquals(new BigDecimal("0.00"), result.netPaid());
+    }
+
+    @Test void refundDoesNotInactivateAnActiveStudent() {
+        AuthUser student = new AuthUser("Ana", "ana@example.com", "1", LocalDate.of(2000, 1, 1), "hash");
+        student.activate();
+        MonthlyFee fee = new MonthlyFee(student, LocalDate.of(2026, 9, 1), new BigDecimal("200.00"));
+        MonthlyFeePayment payment = new MonthlyFeePayment(fee, new BigDecimal("200.00"));
+        when(payments.findById(1L)).thenReturn(Optional.of(payment));
+        when(refunds.findAllByPaymentId(1L)).thenReturn(List.of());
+        when(refunds.findAllByPaymentMonthlyFeeId(null)).thenReturn(List.of(new MonthlyFeeRefund(payment)));
+        when(payments.findAllByMonthlyFeeId(null)).thenReturn(List.of(payment));
+        when(refunds.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+
+        feeService.refundPayment(1L, UserRole.ADMIN);
+
+        assertEquals("ativo", student.getStatus());
     }
 }
