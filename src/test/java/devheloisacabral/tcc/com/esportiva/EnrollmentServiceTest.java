@@ -5,6 +5,7 @@ import devheloisacabral.tcc.com.esportiva.application.monthlyfee.MonthlyFeeServi
 import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
 import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFee;
+import devheloisacabral.tcc.com.esportiva.domain.enrollment.Enrollment;
 import devheloisacabral.tcc.com.esportiva.domain.professor.Professor;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
@@ -57,7 +58,7 @@ class EnrollmentServiceTest {
     void adminEnrollsActiveStudentInActiveTurmaWithAvailableCapacityAndStoresDate() {
         when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
         when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
-        when(enrollments.countByTurmaId(30L)).thenReturn(0L);
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(0L);
         when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
         when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -94,7 +95,7 @@ class EnrollmentServiceTest {
     void rejectsEnrollmentWhenTurmaCapacityIsReached() {
         when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
         when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
-        when(enrollments.countByTurmaId(30L)).thenReturn(2L);
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(2L);
 
         assertThrows(EnrollmentService.InvalidEnrollmentException.class, () -> service.create(20L, 30L, UserRole.ADMIN));
         verify(enrollments, never()).save(any());
@@ -107,7 +108,7 @@ class EnrollmentServiceTest {
         when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(true);
 
         assertThrows(EnrollmentService.OverdueMonthlyFeeException.class, () -> service.create(20L, 30L, UserRole.ADMIN));
-        verify(enrollments, never()).countByTurmaId(anyLong());
+        verify(enrollments, never()).countByTurmaIdAndStatus(anyLong(), anyString());
         verify(enrollments, never()).save(any());
     }
 
@@ -116,7 +117,7 @@ class EnrollmentServiceTest {
         when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
         when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
         when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
-        when(enrollments.countByTurmaId(30L)).thenReturn(0L);
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(0L);
         when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertEquals(30L, service.create(20L, 30L, UserRole.ADMIN).turma().id());
@@ -131,7 +132,7 @@ class EnrollmentServiceTest {
         when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class)))
                 .thenAnswer(invocation -> "pendente".equals(fee.getStatus()));
         when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
-        when(enrollments.countByTurmaId(30L)).thenReturn(0L);
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(0L);
         when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         MonthlyFeeService feeService = new MonthlyFeeService(fees, users);
@@ -145,7 +146,7 @@ class EnrollmentServiceTest {
         Turma anotherTurma = turma(31L, "Basquete", "ativa", 2);
         when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
         when(turmas.findByIdForEnrollment(31L)).thenReturn(Optional.of(anotherTurma));
-        when(enrollments.countByTurmaId(31L)).thenReturn(0L);
+        when(enrollments.countByTurmaIdAndStatus(31L, "ativa")).thenReturn(0L);
         when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = service.create(20L, 31L, UserRole.ADMIN);
@@ -174,6 +175,43 @@ class EnrollmentServiceTest {
     @Test
     void alunoCannotCreateEnrollment() {
         assertThrows(AccessDeniedException.class, () -> service.create(20L, 30L, UserRole.ALUNO));
+    }
+
+    @Test
+    void adminCancelsActiveEnrollmentAndSecondCancellationIsBlocked() throws Exception {
+        Enrollment enrollment = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        setId(enrollment, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(enrollment));
+
+        assertEquals("cancelada", service.cancel(80L, UserRole.ADMIN).status());
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class, () -> service.cancel(80L, UserRole.ADMIN));
+        verify(enrollments, never()).delete(any());
+    }
+
+    @Test
+    void cancelledEnrollmentDoesNotConsumeCapacityAndAllowsNewActiveEnrollment() throws Exception {
+        Enrollment cancelled = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        cancelled.cancel();
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 30L, "ativa")).thenReturn(false);
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(0L);
+        when(enrollments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertEquals("ativa", service.create(20L, 30L, UserRole.ADMIN).status());
+        verify(enrollments).save(any());
+    }
+
+    @Test
+    void activeEnrollmentCannotBeDuplicated() {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 30L, "ativa")).thenReturn(true);
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.create(20L, 30L, UserRole.ADMIN));
+        verify(enrollments, never()).save(any());
+        verify(enrollments, never()).countByTurmaIdAndStatus(anyLong(), anyString());
     }
 
     private AuthUser student(long id, String name) throws Exception {

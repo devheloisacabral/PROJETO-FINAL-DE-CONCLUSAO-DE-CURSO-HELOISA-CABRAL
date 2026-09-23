@@ -10,6 +10,7 @@ import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.aula.AulaRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.presenca.PresencaRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.enrollment.EnrollmentRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ class PresencaServiceTest {
     @Mock AuthUserRepository users;
     @Mock AulaRepository aulas;
     @Mock MonthlyFeeRepository fees;
+    @Mock EnrollmentRepository enrollments;
     private PresencaService service;
     private AuthUser aluno;
     private Aula aula;
@@ -44,7 +46,7 @@ class PresencaServiceTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new PresencaService(presencas, users, fees, aulas);
+        service = new PresencaService(presencas, users, fees, aulas, enrollments);
         aluno = student(50L, "ativo");
         AuthUser professorUser = new AuthUser("Professor", "p@example.com", LocalDate.of(1980, 1, 1), "hash", UserRole.PROFESSOR);
         setId(professorUser, 40L);
@@ -58,6 +60,7 @@ class PresencaServiceTest {
         lenient().when(users.findByIdAndRole(50L, UserRole.ALUNO)).thenReturn(Optional.of(aluno));
         lenient().when(aulas.findByIdWithTurma(70L)).thenReturn(Optional.of(aula));
         lenient().when(presencas.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(enrollments.existsByStudentIdAndTurmaIdAndStatus(50L, 30L, "ativa")).thenReturn(true);
     }
 
     @Test
@@ -89,6 +92,19 @@ class PresencaServiceTest {
     void professorCannotRegisterInUnassociatedClass() {
         assertThrows(AccessDeniedException.class, () -> service.create(50L, 70L, UserRole.PROFESSOR, 999L));
         verify(presencas, never()).save(any());
+    }
+
+    @Test
+    void cancelledEnrollmentBlocksFuturePresenceWithoutDeletingHistory() {
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(50L, 30L, "ativa")).thenReturn(false);
+
+        assertThrows(PresencaService.NotEnrolledException.class,
+                () -> service.create(50L, 70L, UserRole.PROFESSOR, 40L));
+        verify(presencas, never()).save(any());
+
+        Presenca oldPresence = new Presenca(aluno, aula, LocalDateTime.now().minusDays(1));
+        when(presencas.findAllWithDetailsByStudentId(50L)).thenReturn(List.of(oldPresence));
+        assertEquals(1, service.findAll(UserRole.ALUNO, 50L, null).size());
     }
 
     @Test
