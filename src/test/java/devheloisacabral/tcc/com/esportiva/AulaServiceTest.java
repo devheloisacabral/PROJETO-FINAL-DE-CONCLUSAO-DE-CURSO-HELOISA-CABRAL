@@ -8,6 +8,7 @@ import devheloisacabral.tcc.com.esportiva.domain.professor.Professor;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.aula.AulaRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.turma.TurmaRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.presenca.PresencaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,12 +32,13 @@ import static org.mockito.Mockito.*;
 class AulaServiceTest {
     @Mock AulaRepository aulas;
     @Mock TurmaRepository turmas;
+    @Mock PresencaRepository presencas;
     private AulaService service;
     private Turma turma;
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new AulaService(aulas, turmas);
+        service = new AulaService(aulas, turmas, presencas);
         turma = turma(30L, 40L);
     }
 
@@ -123,6 +125,68 @@ class AulaServiceTest {
         assertThrows(AccessDeniedException.class, () -> service.create(30L, LocalDate.of(2026, 9, 21), UserRole.PROFESSOR));
         assertThrows(AccessDeniedException.class, () -> service.create(30L, LocalDate.of(2026, 9, 21), UserRole.ALUNO));
         verifyNoInteractions(turmas, aulas);
+    }
+
+    @Test
+    void adminReschedulesFutureLessonWithoutPresence() throws Exception {
+        Aula aula = new Aula(turma, LocalDate.of(2026, 10, 1), LocalTime.of(18, 0), LocalTime.of(19, 0));
+        setId(aula, 70L);
+        service = new AulaService(aulas, turmas, presencas);
+        when(aulas.findByIdWithTurma(70L)).thenReturn(Optional.of(aula));
+        when(presencas.countByAulaId(70L)).thenReturn(0L);
+        when(aulas.existsActiveConflict(30L, 70L, LocalDate.of(2026, 10, 5), LocalTime.of(9, 0), LocalTime.of(10, 0))).thenReturn(false);
+        when(aulas.save(aula)).thenReturn(aula);
+
+        var result = service.reschedule(70L, LocalDate.of(2026, 10, 5), LocalTime.of(9, 0), LocalTime.of(10, 0), UserRole.ADMIN);
+
+        assertEquals(LocalDate.of(2026, 10, 5), result.data());
+        assertEquals(LocalTime.of(9, 0), result.horarioInicio());
+        assertEquals(LocalTime.of(10, 0), result.horarioFim());
+        verify(aulas).save(aula);
+    }
+
+    @Test
+    void blocksReschedulingCancelledLesson() throws Exception {
+        Aula aula = new Aula(turma, LocalDate.of(2026, 10, 1), LocalTime.of(18, 0), LocalTime.of(19, 0));
+        setId(aula, 70L);
+        setField(aula, "cancelled", true);
+        service = new AulaService(aulas, turmas, presencas);
+        when(aulas.findByIdWithTurma(70L)).thenReturn(Optional.of(aula));
+
+        assertThrows(AulaService.RescheduleNotAllowedException.class,
+                () -> service.reschedule(70L, LocalDate.of(2026, 10, 5), LocalTime.of(9, 0), LocalTime.of(10, 0), UserRole.ADMIN));
+        assertTrue(aula.isCancelled());
+        verifyNoInteractions(presencas);
+        verify(aulas, never()).save(any());
+    }
+
+    @Test
+    void blocksReschedulingLessonWithPresence() throws Exception {
+        Aula aula = new Aula(turma, LocalDate.of(2026, 10, 1), LocalTime.of(18, 0), LocalTime.of(19, 0));
+        setId(aula, 70L);
+        service = new AulaService(aulas, turmas, presencas);
+        when(aulas.findByIdWithTurma(70L)).thenReturn(Optional.of(aula));
+        when(presencas.countByAulaId(70L)).thenReturn(1L);
+
+        assertThrows(AulaService.RescheduleNotAllowedException.class,
+                () -> service.reschedule(70L, LocalDate.of(2026, 10, 5), LocalTime.of(9, 0), LocalTime.of(10, 0), UserRole.ADMIN));
+        assertEquals(LocalDate.of(2026, 10, 1), aula.getDate());
+        verify(aulas, never()).save(any());
+    }
+
+    @Test
+    void blocksReschedulingWhenAnotherLessonOccupiesTheSameTurmaTime() throws Exception {
+        Aula aula = new Aula(turma, LocalDate.of(2026, 10, 1), LocalTime.of(18, 0), LocalTime.of(19, 0));
+        setId(aula, 70L);
+        service = new AulaService(aulas, turmas, presencas);
+        when(aulas.findByIdWithTurma(70L)).thenReturn(Optional.of(aula));
+        when(presencas.countByAulaId(70L)).thenReturn(0L);
+        when(aulas.existsActiveConflict(30L, 70L, LocalDate.of(2026, 10, 5), LocalTime.of(9, 0), LocalTime.of(10, 0))).thenReturn(true);
+
+        assertThrows(AulaService.LessonConflictException.class,
+                () -> service.reschedule(70L, LocalDate.of(2026, 10, 5), LocalTime.of(9, 0), LocalTime.of(10, 0), UserRole.ADMIN));
+        assertEquals(LocalDate.of(2026, 10, 1), aula.getDate());
+        verify(aulas, never()).save(any());
     }
 
     private Turma turma(long turmaId, long professorUserId) throws Exception {

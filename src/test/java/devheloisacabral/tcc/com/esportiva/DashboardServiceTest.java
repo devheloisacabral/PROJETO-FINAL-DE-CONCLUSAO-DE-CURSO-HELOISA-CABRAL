@@ -86,6 +86,30 @@ class DashboardServiceTest {
     }
 
     @Test
+    void dashboardUsesRescheduledDateAndDoesNotExposeOldDate() {
+        Aula aula = mock(Aula.class);
+        Turma turma = mock(Turma.class);
+        when(aula.getId()).thenReturn(80L);
+        when(aula.getTurma()).thenReturn(turma);
+        when(turma.getId()).thenReturn(12L);
+        when(turma.getName()).thenReturn("Turma Adulto");
+        when(aula.getDate()).thenReturn(LocalDate.of(2026, 10, 5));
+        when(aula.getStartTime()).thenReturn(LocalTime.of(9, 0));
+        when(aula.getEndTime()).thenReturn(LocalTime.of(10, 0));
+        when(aula.isCancelled()).thenReturn(false);
+        when(aulas.findUpcomingWithTurma(any(), any(), any(Pageable.class))).thenReturn(List.of(aula));
+        when(users.countByRole(UserRole.ALUNO)).thenReturn(0L);
+        when(professors.count()).thenReturn(0L);
+        when(enrollments.countActiveEnrollments()).thenReturn(0L);
+        when(monthlyFees.countByReferenceMonthAndStatus(any(), eq("pendente"))).thenReturn(0L);
+
+        var result = service.find("2026-10", UserRole.ADMIN);
+
+        assertEquals(List.of(LocalDate.of(2026, 10, 5)), result.proximasAulas().stream().map(DashboardService.UpcomingLesson::data).toList());
+        assertFalse(result.proximasAulas().stream().anyMatch(lesson -> lesson.data().equals(LocalDate.of(2026, 10, 1))));
+    }
+
+    @Test
     void rejectsNonAdminAndInvalidReferenceMonth() {
         assertThrows(AccessDeniedException.class, () -> service.find("2026-09", UserRole.PROFESSOR));
         assertThrows(DashboardService.InvalidMonthException.class, () -> service.find("09-2026", UserRole.ADMIN));
