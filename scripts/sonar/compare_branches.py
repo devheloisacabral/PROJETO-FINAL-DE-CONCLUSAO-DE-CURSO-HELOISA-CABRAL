@@ -154,8 +154,15 @@ def natural_key(value: str) -> list[int | str]:
     return [int(part) if part.isdigit() else part.casefold() for part in re.split(r"(\d+)", value)]
 
 
+def experiment_order_key(value: str) -> tuple[int, list[int | str]]:
+    match = re.match(r"^(?:prompt|manutencao)-(\d+)(?:-|$)", value, re.IGNORECASE)
+    if match:
+        return int(match.group(1)), natural_key(value)
+    return sys.maxsize, natural_key(value)
+
+
 def parse_selection(raw: str, available: list[str]) -> list[str]:
-    selected = sorted((branch for branch in available if EXPERIMENTAL_BRANCH.match(branch)), key=natural_key) if raw.strip().upper() == "ALL" else [
+    selected = sorted((branch for branch in available if EXPERIMENTAL_BRANCH.match(branch)), key=experiment_order_key) if raw.strip().upper() == "ALL" else [
         part.strip() for part in re.split(r"[,\n;]+", raw) if part.strip()
     ]
     selected = list(dict.fromkeys(selected))
