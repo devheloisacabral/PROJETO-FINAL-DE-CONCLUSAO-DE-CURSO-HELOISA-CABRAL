@@ -6,10 +6,12 @@ import devheloisacabral.tcc.com.esportiva.domain.auth.AuthUser;
 import devheloisacabral.tcc.com.esportiva.domain.auth.UserRole;
 import devheloisacabral.tcc.com.esportiva.domain.monthlyfee.MonthlyFee;
 import devheloisacabral.tcc.com.esportiva.domain.enrollment.Enrollment;
+import devheloisacabral.tcc.com.esportiva.domain.enrollment.WaitlistEntry;
 import devheloisacabral.tcc.com.esportiva.domain.professor.Professor;
 import devheloisacabral.tcc.com.esportiva.domain.turma.Turma;
 import devheloisacabral.tcc.com.esportiva.persistence.auth.AuthUserRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.enrollment.EnrollmentRepository;
+import devheloisacabral.tcc.com.esportiva.persistence.enrollment.WaitlistRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.monthlyfee.MonthlyFeeRepository;
 import devheloisacabral.tcc.com.esportiva.persistence.turma.TurmaRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,13 +45,14 @@ class EnrollmentServiceTest {
     @Mock AuthUserRepository users;
     @Mock MonthlyFeeRepository fees;
     @Mock TurmaRepository turmas;
+    @Mock WaitlistRepository waitlist;
     private EnrollmentService service;
     private AuthUser activeStudent;
     private Turma activeTurma;
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new EnrollmentService(enrollments, users, fees, turmas);
+        service = new EnrollmentService(enrollments, users, fees, turmas, waitlist);
         activeStudent = student(20L, "Ana");
         activeStudent.activate();
         activeTurma = turma(30L, "Vôlei", "ativa", 2);
@@ -213,6 +216,88 @@ class EnrollmentServiceTest {
                 () -> service.create(20L, 30L, UserRole.ADMIN));
         verify(enrollments, never()).save(any());
         verify(enrollments, never()).countByTurmaIdAndStatus(anyLong(), anyString());
+    }
+
+    @Test
+    void fullTurmaAcceptsStudentOnWaitlistWithoutCreatingEnrollment() {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(2L);
+        when(waitlist.save(any(WaitlistEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = service.createOrWaitlist(20L, 30L, true, UserRole.ADMIN);
+
+        assertEquals("ativa", ((EnrollmentService.WaitlistResult) result).status());
+        verify(waitlist).save(any(WaitlistEntry.class));
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test
+    void duplicateWaitlistEntryIsBlockedAndDoesNotChangePosition() {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(enrollments.countByTurmaIdAndStatus(30L, "ativa")).thenReturn(2L);
+        when(waitlist.existsByStudentIdAndTurmaIdAndStatus(20L, 30L, "ativa")).thenReturn(true);
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.createOrWaitlist(20L, 30L, true, UserRole.ADMIN));
+        verify(waitlist, never()).save(any());
+    }
+
+    @Test
+    void cancellingEnrollmentPromotesFirstEligibleWaitlistStudent() throws Exception {
+        AuthUser waitingStudent = student(21L, "Bia");
+        waitingStudent.activate();
+        Enrollment enrollment = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        WaitlistEntry entry = new WaitlistEntry(waitingStudent, activeTurma, java.time.LocalDateTime.now());
+        setId(enrollment, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(enrollment));
+        when(waitlist.findByTurmaIdAndStatusOrderByRequestedAtAscIdAsc(30L, "ativa")).thenReturn(List.of(entry));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(21L, 30L, "ativa")).thenReturn(false);
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(anyLong(), anyString(), any(LocalDate.class))).thenReturn(false);
+        when(enrollments.save(any(Enrollment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(waitlist.save(any(WaitlistEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.cancel(80L, UserRole.ADMIN);
+
+        assertEquals("promovida", entry.getStatus());
+        verify(enrollments).save(any(Enrollment.class));
+        verify(waitlist).save(entry);
+    }
+
+    @Test
+    void promotionSkipsIneligibleStudentAndKeepsItOnWaitlist() throws Exception {
+        AuthUser inactiveStudent = student(21L, "Bia");
+        AuthUser eligibleStudent = student(22L, "Carol");
+        eligibleStudent.activate();
+        Enrollment enrollment = new Enrollment(activeStudent, activeTurma, java.time.LocalDateTime.now());
+        WaitlistEntry ineligible = new WaitlistEntry(inactiveStudent, activeTurma, java.time.LocalDateTime.now());
+        WaitlistEntry eligible = new WaitlistEntry(eligibleStudent, activeTurma, java.time.LocalDateTime.now().plusSeconds(1));
+        setId(enrollment, 80L);
+        when(enrollments.findById(80L)).thenReturn(Optional.of(enrollment));
+        when(waitlist.findByTurmaIdAndStatusOrderByRequestedAtAscIdAsc(30L, "ativa"))
+                .thenReturn(List.of(ineligible, eligible));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(22L, 30L, "ativa")).thenReturn(false);
+        when(fees.existsByStudentIdAndStatusAndDueDateBefore(22L, "pendente", LocalDate.now())).thenReturn(false);
+        when(enrollments.save(any(Enrollment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(waitlist.save(any(WaitlistEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.cancel(80L, UserRole.ADMIN);
+
+        assertEquals("ativa", ineligible.getStatus());
+        assertEquals("promovida", eligible.getStatus());
+        verify(waitlist).save(eligible);
+    }
+
+    @Test
+    void activelyEnrolledStudentCannotJoinSameTurmaWaitlist() {
+        when(users.findByIdAndRole(20L, UserRole.ALUNO)).thenReturn(Optional.of(activeStudent));
+        when(turmas.findByIdForEnrollment(30L)).thenReturn(Optional.of(activeTurma));
+        when(enrollments.existsByStudentIdAndTurmaIdAndStatus(20L, 30L, "ativa")).thenReturn(true);
+
+        assertThrows(EnrollmentService.InvalidEnrollmentException.class,
+                () -> service.createOrWaitlist(20L, 30L, true, UserRole.ADMIN));
+        verify(waitlist, never()).save(any());
     }
 
     @Test
