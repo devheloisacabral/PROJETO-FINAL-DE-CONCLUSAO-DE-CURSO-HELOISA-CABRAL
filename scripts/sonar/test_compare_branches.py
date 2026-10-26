@@ -44,6 +44,23 @@ class ComparisonTest(unittest.TestCase):
         second = BranchSnapshot("prompt-02", "base", "b" * 40, "2026-01-02", "OK", {})
         self.assertEqual(first.project_key, second.project_key)
 
+    def test_all_orders_prompt_and_maintenance_by_increment_number(self):
+        available = [
+            {"name": "manutencao-11-vencimento-individual-por-aluno"},
+            {"name": "prompt-02-autenticacao"},
+            {"name": "manutencao-20-reagendamento-de-aula"},
+            {"name": "prompt-01-fundacao"},
+        ]
+        self.assertEqual(
+            parse_selection("ALL", available),
+            [
+                "prompt-01-fundacao",
+                "prompt-02-autenticacao",
+                "manutencao-11-vencimento-individual-por-aluno",
+                "manutencao-20-reagendamento-de-aula",
+            ],
+        )
+
     def test_metric_cell_marks_direction(self):
         self.assertIn("🟢", metric_cell(85, 80, True))
         self.assertIn("🔴", metric_cell(4, 2, False))
